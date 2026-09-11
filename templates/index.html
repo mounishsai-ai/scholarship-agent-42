@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scholarship Agent · Agent 42</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+</head>
+<body>
+
+  <!-- ===================== Header (Buji house style) ===================== -->
+  <header class="topbar">
+    <div class="brand">
+      <img src="{{ url_for('static', filename='img/vignan-logo.png') }}"
+           alt="Vignan" class="logo" onerror="this.style.display='none'" />
+      <div class="brand-text">
+        <div class="brand-kicker">CSE PRESENTS · AGENTIC AI DAY 2026</div>
+        <div class="brand-title">Scholarship Agent <span class="agent-no">Agent 42</span></div>
+      </div>
+    </div>
+    <div class="badges">
+      {% for b in ['NAAC A+','NIRF','NBA','UGC','ABET'] %}
+        <span class="badge">{{ b }}</span>
+      {% endfor %}
+      <img src="{{ url_for('static', filename='img/badges.png') }}"
+           alt="" class="badge-strip" onerror="this.style.display='none'" />
+    </div>
+  </header>
+
+  {% if not db_ready %}
+  <div class="banner banner-warn">
+    Database not connected. Copy <code>.env.example</code> to <code>.env</code>, paste your
+    Supabase connection string, run <code>schema_full.sql</code> then <code>seed.sql</code>,
+    and restart the app.
+  </div>
+  {% endif %}
+
+  <!-- ===================== Role switcher + KPI strip ===================== -->
+  <section class="controls">
+    <div class="role-switch">
+      <span>View as</span>
+      <button class="role active" data-role="ACCOUNTS">Scholarship Officer</button>
+      <button class="role" data-role="HOD">Head of Department</button>
+      <button class="role" data-role="STUDENT">Student</button>
+    </div>
+    <div class="kpis" id="kpis"><!-- filled by JS --></div>
+  </section>
+
+  <!-- ===================== Tabs ===================== -->
+  <nav class="tabs">
+    <button class="tab active" data-tab="coverage">Coverage</button>
+    <button class="tab" data-tab="matrix">Eligibility Matrix</button>
+    <button class="tab" data-tab="applications">Application Tracker</button>
+    <button class="tab" data-tab="renewal">Renewal Risk</button>
+    <button class="tab" data-tab="reconciliation">Fee Reconciliation</button>
+    <button class="tab" data-tab="schemes">Scheme Register</button>
+    <button class="tab" data-tab="activity">Agent Activity</button>
+  </nav>
+
+  <main class="panels">
+    <section class="panel active" id="panel-coverage"></section>
+    <section class="panel" id="panel-matrix"></section>
+    <section class="panel" id="panel-applications"></section>
+    <section class="panel" id="panel-renewal"></section>
+    <section class="panel" id="panel-reconciliation"></section>
+    <section class="panel" id="panel-schemes"></section>
+    <section class="panel" id="panel-activity"></section>
+  </main>
+
+  <!-- ===================== Chat widget (Buji) ===================== -->
+  <button id="chat-toggle" class="chat-toggle" title="Ask the Scholarship Agent">💬</button>
+  <div id="chat" class="chat hidden">
+    <div class="chat-head">
+      <div class="chat-avatar">🤖</div>
+      <div>
+        <div class="chat-name">Scholarship Agent</div>
+        <div class="chat-status">{{ 'Gemini + rules' if chat_llm else 'rule-based · offline-safe' }}</div>
+      </div>
+      <button id="chat-close" class="chat-close">×</button>
+    </div>
+    <div id="chat-log" class="chat-log">
+      <div class="msg bot">Hi! Ask me things like <em>"which scholarships is 23CSE001 eligible for?"</em>,
+        <em>"who is at renewal risk?"</em> or <em>"what is our coverage gap?"</em></div>
+    </div>
+    <form id="chat-form" class="chat-form">
+      <input id="chat-input" autocomplete="off" placeholder="Ask the Scholarship Agent…" />
+      <button type="submit">➤</button>
+    </form>
+  </div>
+
+  <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
