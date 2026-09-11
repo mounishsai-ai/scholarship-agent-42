@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent 42 · Scholarship Agent</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect x='9' y='15' width='22' height='18' rx='6' fill='%232f6df6'/%3E%3Ccircle cx='16.25' cy='23' r='2' fill='%2312224e'/%3E%3Ccircle cx='23.75' cy='23' r='2' fill='%2312224e'/%3E%3Cpath d='M4 12 L20 6 L36 12 L20 18 Z' fill='%2312224e'/%3E%3Ccircle cx='20' cy='8' r='2.4' fill='%23e8930c'/%3E%3C/svg%3E" />
+  <meta name="description" content="Agent 42 finds every scholarship a student is eligible for, tracks applications, catches renewals about to lapse, and stops students being chased for fees a scholarship already covers." />
+
+  <!-- Fonts: swap + real system fallback so the page still reads offline -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
+
+  <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=1" />
+</head>
+<body>
+
+<!-- ============================ NAV ============================ -->
+<header class="nav" id="nav">
+  <a class="nav-brand" href="#top" aria-label="Agent 42 home">
+    <img src="{{ url_for('static', filename='img/vignan-logo.png') }}"
+         alt="Vignan University" class="nav-logo" onerror="this.style.display='none'" />
+    <span class="nav-mark" aria-hidden="true">
+      <!-- Buji: graduation-cap agent mascot (compact) -->
+      <svg viewBox="0 0 40 40" width="30" height="30" role="img" aria-label="Buji">
+        <rect x="9" y="15" width="22" height="18" rx="6" fill="#2f6df6"/>
+        <rect x="13.5" y="20" width="5.5" height="6" rx="2.75" fill="#eaf1ff"/>
+        <rect x="21" y="20" width="5.5" height="6" rx="2.75" fill="#eaf1ff"/>
+        <circle cx="16.25" cy="23" r="1.6" fill="#12224e"/>
+        <circle cx="23.75" cy="23" r="1.6" fill="#12224e"/>
+        <path d="M4 12 L20 6 L36 12 L20 18 Z" fill="#12224e"/>
+        <path d="M20 18 L20 6" stroke="#12224e" stroke-width="0"/>
+        <rect x="19" y="9" width="2" height="7" rx="1" fill="#12224e"/>
+        <circle cx="20" cy="8" r="2.4" fill="#e8930c"/>
+      </svg>
+    </span>
+    <span class="nav-name">Agent&nbsp;42<span class="nav-name-sub">Scholarship Agent</span></span>
+  </a>
+
+  <nav class="nav-links" aria-label="Primary">
+    <a href="#coverage">Coverage</a>
+    <a href="#stories">The&nbsp;work</a>
+    <a href="#platform">Platform</a>
+    <a href="#tech">How&nbsp;it&nbsp;works</a>
+  </nav>
+
+  <div class="nav-cta">
+    {% if signed_in %}
+      <a class="btn btn-ghost" href="{{ url_for('logout') }}">Sign&nbsp;out</a>
+      <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Open dashboard</a>
+    {% else %}
+      <form method="post" action="{{ url_for('login') }}" class="inline-form">
+        <input type="hidden" name="mode" value="guest" />
+        <button class="btn btn-ghost" type="submit">Continue as guest</button>
+      </form>
+      <form method="post" action="{{ url_for('login') }}" class="inline-form">
+        <input type="hidden" name="mode" value="google" />
+        <button class="btn btn-google" type="submit">
+          <span class="g-logo" aria-hidden="true">
+            <svg viewBox="0 0 48 48" width="18" height="18"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+          </span>
+          Sign in with Google
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</header>
+
+<span id="top"></span>
+
+<!-- ============================ HERO ============================ -->
+<section class="hero" id="hero">
+  <div class="hero-glow" aria-hidden="true"></div>
+  <div class="hero-grid">
+
+    <div class="hero-copy">
+      <div class="eyebrow" data-reveal>
+        <span class="eyebrow-dot"></span>
+        Agentic AI Day 2026 · Vignan University · CSE
+      </div>
+      <h1 class="hero-title" data-reveal>
+        Every scholarship a student earns,<br />
+        <span class="grad">actually reaches them.</span>
+      </h1>
+      <p class="hero-sub" data-reveal>
+        Agent&nbsp;42 finds every scheme a student is eligible for, tracks each application,
+        catches renewals about to lapse, and stops anyone being chased for fees a scholarship
+        already paid.
+      </p>
+      <div class="hero-actions" data-reveal>
+        {% if signed_in %}
+          <a class="btn btn-primary btn-lg" href="{{ url_for('dashboard') }}">Open the dashboard →</a>
+          <a class="btn btn-ghost btn-lg" href="{{ url_for('logout') }}">Sign out</a>
+        {% else %}
+          <form method="post" action="{{ url_for('login') }}" class="inline-form">
+            <input type="hidden" name="mode" value="google" />
+            <button class="btn btn-google btn-lg" type="submit">
+              <span class="g-logo" aria-hidden="true">
+                <svg viewBox="0 0 48 48" width="20" height="20"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+              </span>
+              Sign in with Google
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('login') }}" class="inline-form">
+            <input type="hidden" name="mode" value="guest" />
+            <button class="btn btn-ghost btn-lg" type="submit">Continue as guest</button>
+          </form>
+        {% endif %}
+      </div>
+      <div class="hero-note" data-reveal>Deterministic reasoning · full audit trail · human-in-the-loop approvals</div>
+    </div>
+
+    <!-- Signature: the coverage-gap meter + Buji -->
+    <div class="hero-visual" data-reveal>
+      <div class="mascot" aria-hidden="true">
+        <svg viewBox="0 0 120 120" width="96" height="96" role="img" aria-label="Buji the Scholarship Agent">
+          <ellipse cx="60" cy="108" rx="34" ry="6" fill="#12224e" opacity="0.12"/>
+          <rect x="26" y="44" width="68" height="56" rx="18" fill="#2f6df6"/>
+          <rect x="26" y="44" width="68" height="56" rx="18" fill="url(#bujiG)"/>
+          <rect x="36" y="58" width="20" height="22" rx="10" fill="#eaf1ff"/>
+          <rect x="64" y="58" width="20" height="22" rx="10" fill="#eaf1ff"/>
+          <circle class="buji-eye" cx="46" cy="69" r="5.5" fill="#12224e"/>
+          <circle class="buji-eye" cx="74" cy="69" r="5.5" fill="#12224e"/>
+          <rect x="50" y="88" width="20" height="4" rx="2" fill="#eaf1ff" opacity="0.85"/>
+          <path d="M18 38 L60 22 L102 38 L60 54 Z" fill="#12224e"/>
+          <rect x="57" y="26" width="6" height="20" rx="3" fill="#12224e"/>
+          <circle cx="60" cy="24" r="6" fill="#e8930c"/>
+          <path d="M96 40 q10 2 10 12" stroke="#12224e" stroke-width="4" fill="none" stroke-linecap="round"/>
+          <circle cx="106" cy="54" r="4" fill="#e8930c"/>
+          <defs>
+            <linearGradient id="bujiG" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
+              <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+
+      <div class="meter-card" id="coverage-meter">
+        <div class="meter-head">
+          <span class="meter-kicker">Live coverage across 20 students</span>
+          <span class="meter-badge" id="meter-source">representative</span>
+        </div>
+        <div class="meter-stats">
+          <div class="mstat">
+            <div class="mstat-num" id="stat-eligible" data-count="29">29</div>
+            <div class="mstat-lbl">Eligible matches</div>
+          </div>
+          <div class="mstat">
+            <div class="mstat-num accent-blue" id="stat-covered" data-count="4">4</div>
+            <div class="mstat-lbl">Actually covered</div>
+          </div>
+          <div class="mstat">
+            <div class="mstat-num accent-gold" id="stat-gap" data-count="25">25</div>
+            <div class="mstat-lbl">The gap Agent&nbsp;42 closes</div>
+          </div>
+        </div>
+        <div class="meter-bar" role="img" aria-label="Coverage gap: 4 of 29 eligible matches are covered">
+          <div class="meter-fill" id="meter-fill" style="width:0%"></div>
+          <div class="meter-gap-label" id="meter-gap-label">gap</div>
+        </div>
+        <div class="meter-legend">
+          <span><i class="dot dot-blue"></i>Covered</span>
+          <span><i class="dot dot-gold"></i>Eligible but unclaimed</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <a class="scroll-cue" href="#coverage" aria-label="Scroll to coverage">
+    <span></span>
+  </a>
+</section>
+
+<!-- ============================ COVERAGE STORY ============================ -->
+<section class="section section-coverage" id="coverage">
+  <div class="wrap">
+    <div class="section-lead" data-reveal>
+      <h2 class="section-title">One number decides whether the work mattered.</h2>
+      <p class="section-body">
+        A scholarship a student qualifies for but never claims is invisible in most systems —
+        it simply doesn't happen. Agent&nbsp;42 makes the gap the headline, then works it down
+        scheme by scheme.
+      </p>
+    </div>
+
+    <div class="coverage-cols" id="coverage-cols" data-reveal>
+      <!-- filled by landing.js from /api/coverage, with a static fallback baked in -->
+      <div class="cov-row cov-head">
+        <span>Scheme</span><span>Eligible</span><span>Covered</span><span>Gap</span>
+      </div>
+      <div class="cov-row"><span>Post-Matric Scholarship for SC/ST</span><span>7</span><span class="c-ok">2</span><span class="c-gap">5</span></div>
+      <div class="cov-row"><span>Pragati Scholarship for Girl Students</span><span>10</span><span class="c-ok">0</span><span class="c-gap">10</span></div>
+      <div class="cov-row"><span>State Merit-cum-Means Scholarship</span><span>9</span><span class="c-ok">1</span><span class="c-gap">8</span></div>
+      <div class="cov-row"><span>EWS Tuition Fee Concession</span><span>3</span><span class="c-ok">1</span><span class="c-gap">2</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ THREE STORIES ============================ -->
+<section class="section section-stories" id="stories">
+  <div class="wrap">
+    <div class="section-lead center" data-reveal>
+      <span class="eyebrow"><span class="eyebrow-dot"></span>Three students, three failures the agent catches</span>
+      <h2 class="section-title">Where the system usually loses people.</h2>
+    </div>
+
+    <!-- Story 1 — split -->
+    <article class="story story-split" data-reveal>
+      <div class="story-media">
+        <div class="story-illus illus-priya" aria-hidden="true">
+          <div class="scheme-chip found">Pragati (girl students) <b>✓ eligible</b></div>
+          <div class="scheme-chip found">Merit-cum-Means <b>✓ eligible</b></div>
+          <div class="scheme-chip found">Post-Matric <b>✓ eligible</b></div>
+          <div class="scheme-chip muted">…nobody had told her</div>
+        </div>
+      </div>
+      <div class="story-text">
+        <span class="story-tag">01 · Discovery</span>
+        <h3>Priya was eligible for schemes no one told her about.</h3>
+        <p>
+          Priya Sharma (23CSE001) matched several active schemes on income, category and merit.
+          The agent surfaces every match with the exact rule that passed — so eligibility stops
+          depending on who happened to hear about a scheme.
+        </p>
+        <div class="story-foot"><b>Eligibility Matrix</b> → every student × every scheme, evaluated deterministically.</div>
+      </div>
+    </article>
+
+    <!-- Story 2 — split, reversed -->
+    <article class="story story-split reverse" data-reveal>
+      <div class="story-media">
+        <div class="story-illus illus-arun" aria-hidden="true">
+          <div class="gauge">
+            <div class="gauge-track"><div class="gauge-fill" style="width:65%"></div></div>
+            <div class="gauge-label">Attendance <b>65%</b> · needs&nbsp;≥&nbsp;75%</div>
+          </div>
+          <div class="flag-chip">⚑ SCHOLARSHIP_RISK raised</div>
+        </div>
+      </div>
+      <div class="story-text">
+        <span class="story-tag">02 · Renewal risk</span>
+        <h3>Arun's sanctioned scholarship was about to lapse — quietly.</h3>
+        <p>
+          Arun Prasad (23CSE016) had a live Post-Matric award, but attendance slipped below the
+          75% renewal rule. The agent catches it while there is still time, raises a risk flag,
+          and routes it to the Scholarship Officer instead of letting the money vanish at renewal.
+        </p>
+        <div class="story-foot"><b>Renewal Risk</b> → live awards checked against each scheme's renewal rule.</div>
+      </div>
+    </article>
+
+    <!-- Story 3 — full-width, breaks the pattern -->
+    <article class="story story-wide" data-reveal>
+      <span class="story-tag">03 · Fee reconciliation</span>
+      <h3>Fatima was being chased for fees a scholarship had already paid.</h3>
+      <div class="story-wide-grid">
+        <p>
+          Fatima Khan (23CSE003) had an EWS concession disbursed against her outstanding fees —
+          and a reminder still going out for the same amount. The agent reconciles disbursements
+          against the fee ledger and recommends suppressing the reminder, quoting the platform's
+          own rule back as evidence, with a human approving the call.
+        </p>
+        <blockquote class="story-quote">
+          "Reminders MUST be suppressed where a sanctioned scholarship or approved installment plan
+          covers the dues. This is the most common cause of avoidable distress in fee follow-up."
+          <cite>— comment in the platform schema, finance.reminder_dispatch</cite>
+        </blockquote>
+      </div>
+      <div class="story-foot"><b>Fee Reconciliation</b> → ₹40,000 covered vs ₹40,000 outstanding → suppress, on approval.</div>
+    </article>
+  </div>
+</section>
+
+<!-- ============================ PLATFORM ============================ -->
+<section class="section section-platform" id="platform">
+  <div class="wrap">
+    <div class="section-lead" data-reveal>
+      <h2 class="section-title">One agent inside a 72-agent platform.</h2>
+      <p class="section-body">
+        Agent&nbsp;42 runs standalone today and plugs into the shared academic platform by
+        changing one connection string. It reads from upstream agents and feeds the ones
+        downstream — with provenance recorded on every run.
+      </p>
+    </div>
+
+    <div class="flow" data-reveal>
+      <div class="flow-col">
+        <div class="flow-label">Consumes</div>
+        <div class="flow-node">Agent 10 · Academic performance <span class="stub">stubbed input</span></div>
+        <div class="flow-node">Agent 11 · Attendance <span class="stub">stubbed input</span></div>
+      </div>
+      <div class="flow-core">
+        <div class="flow-core-badge">Agent&nbsp;42</div>
+        <div class="flow-core-name">Scholarship Agent</div>
+        <div class="flow-core-sub">eligibility · applications · renewals · fee reconciliation</div>
+      </div>
+      <div class="flow-col">
+        <div class="flow-label">Feeds</div>
+        <div class="flow-node out">Agent 40 · Fee management</div>
+        <div class="flow-node out">Agent 41 · Fee reminders <span class="stub">suppression</span></div>
+        <div class="flow-node out">Agent 43 · Education-loan docs</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ TECH ============================ -->
+<section class="section section-tech" id="tech">
+  <div class="wrap">
+    <div class="section-lead center" data-reveal>
+      <span class="eyebrow"><span class="eyebrow-dot"></span>How it works</span>
+      <h2 class="section-title">Agentic where it counts, deterministic where it matters.</h2>
+    </div>
+    <div class="tech-grid" data-reveal>
+      <div class="tech-card">
+        <div class="tech-ico">◆</div>
+        <h4>Every number comes from SQL</h4>
+        <p>The engine reasons deterministically over the shared Postgres schema. The LLM only phrases answers — it never invents a figure.</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-ico">⛓</div>
+        <h4>Full audit trail</h4>
+        <p>Each action writes a run, its inputs, its outputs and a reasoning summary — the evidence an accreditation audit can walk back through.</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-ico">⚑</div>
+        <h4>Risk flags on renewals</h4>
+        <p>Awards drifting below a renewal rule raise a SCHOLARSHIP_RISK flag with a suggested first action, before the award lapses.</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-ico">✓</div>
+        <h4>Human-in-the-loop</h4>
+        <p>Anything that touches a student — suppressing a reminder, sanctioning — waits on a human approval gate. The agent recommends; a person decides.</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-ico">◇</div>
+        <h4>Offline-safe</h4>
+        <p>Runs fully without an API key or internet. Gemini is optional polish on the chat; the system stands on its own.</p>
+      </div>
+      <div class="tech-card">
+        <div class="tech-ico">▤</div>
+        <h4>Lawful use of category</h4>
+        <p>Social category is used only where a statutory scholarship rule requires it — never as a machine-learning feature. The schema forbids the latter.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ CTA BAND ============================ -->
+<section class="cta-band" id="enter">
+  <div class="wrap cta-inner" data-reveal>
+    <h2>See the agent working on real seeded data.</h2>
+    <p>Open the officer dashboard — coverage, eligibility, renewals, reconciliation and the full agent activity log.</p>
+    <div class="cta-actions">
+      {% if signed_in %}
+        <a class="btn btn-primary btn-lg" href="{{ url_for('dashboard') }}">Open the dashboard →</a>
+      {% else %}
+        <form method="post" action="{{ url_for('login') }}" class="inline-form">
+          <input type="hidden" name="mode" value="google" />
+          <button class="btn btn-google btn-lg" type="submit">
+            <span class="g-logo" aria-hidden="true">
+              <svg viewBox="0 0 48 48" width="20" height="20"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            </span>
+            Sign in with Google
+          </button>
+        </form>
+        <form method="post" action="{{ url_for('login') }}" class="inline-form">
+          <input type="hidden" name="mode" value="guest" />
+          <button class="btn btn-ghost btn-lg on-dark" type="submit">Continue as guest</button>
+        </form>
+      {% endif %}
+    </div>
+  </div>
+</section>
+
+<!-- ============================ VIGNAN FOOTER ============================ -->
+<footer class="site-footer">
+  <div class="wrap footer-grid">
+    <div class="footer-brand">
+      <div class="footer-uni">
+        <img src="{{ url_for('static', filename='img/vignan-logo.png') }}"
+             alt="Vignan University" class="footer-logo" onerror="this.style.display='none'" />
+        <div>
+          <div class="footer-uni-name">Vignan University</div>
+          <div class="footer-uni-sub">Department of Computer Science &amp; Engineering</div>
+        </div>
+      </div>
+      <p class="footer-event">Agentic&nbsp;AI&nbsp;Day&nbsp;2026 · Agent&nbsp;42 — the Scholarship Agent</p>
+    </div>
+
+    <div class="footer-badges">
+      <div class="footer-h">Accreditation</div>
+      <div class="badge-row">
+        <img src="{{ url_for('static', filename='img/badges.png') }}" alt=""
+             class="badge-strip" onerror="this.style.display='none'" />
+        <span class="acc-badge">NAAC A+</span>
+        <span class="acc-badge">NIRF</span>
+        <span class="acc-badge">NBA</span>
+        <span class="acc-badge">UGC</span>
+        <span class="acc-badge">ABET</span>
+      </div>
+    </div>
+
+    <div class="footer-team">
+      <div class="footer-h">Team</div>
+      <ul>
+        <li>Mounish Sai</li>
+        <li>Ch. V. K. Ranjith Kumar</li>
+      </ul>
+      <a class="footer-gh" href="https://github.com/mounishsai-ai/scholarship-agent-42" target="_blank" rel="noopener">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+        github.com/mounishsai-ai/scholarship-agent-42
+      </a>
+    </div>
+  </div>
+  <div class="footer-bottom wrap">
+    <span>© 2026 Agent&nbsp;42 · Built for Agentic&nbsp;AI&nbsp;Day, Vignan University CSE.</span>
+    <span>Deterministic engine · human-in-the-loop · full audit trail.</span>
+  </div>
+</footer>
+
+<script src="{{ url_for('static', filename='vendor/gsap.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/ScrollTrigger.min.js') }}"></script>
+<script src="{{ url_for('static', filename='vendor/lenis.min.js') }}"></script>
+<script src="{{ url_for('static', filename='js/landing.js') }}?v=1"></script>
+</body>
+</html>
