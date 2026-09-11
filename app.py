@@ -9,24 +9,58 @@ still comes from the engine, so the app works with no API key and no internet.
 """
 import os
 import json
-from flask import Flask, render_template, jsonify, request
+from flask import (Flask, render_template, jsonify, request, session,
+                   redirect, url_for)
 
 import scholarship_engine as engine
 from db import db_configured
 
 app = Flask(__name__)
+# Fixed fallback so the session survives a reload mid-demo (never os.urandom here).
+app.secret_key = os.environ.get("SECRET_KEY", "agent42-scholarship-vignan-cse-2026")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
 
 
 # --------------------------------------------------------------------------
-# Pages
+# Pages + lenient sign-in flow
 # --------------------------------------------------------------------------
 @app.route("/")
 def index():
+    """The premium animated front door (landing page)."""
+    return render_template("landing.html", db_ready=db_configured(),
+                           chat_llm=bool(GEMINI_API_KEY),
+                           signed_in=bool(session.get("signed_in")),
+                           user_name=session.get("user_name", ""))
+
+
+@app.route("/dashboard")
+def dashboard():
+    """The working data dashboard. Reachable with or without login (lenient
+    by design, so the live demo always opens)."""
     return render_template("index.html", db_ready=db_configured(),
-                           chat_llm=bool(GEMINI_API_KEY))
+                           chat_llm=bool(GEMINI_API_KEY),
+                           signed_in=bool(session.get("signed_in")),
+                           user_name=session.get("user_name", ""))
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    """Set a session flag and enter the dashboard. Two modes:
+    'google' (mock Google sign-in) and 'guest'. Visual entry point only —
+    no real credentials are handled and the dashboard is never gated on this."""
+    mode = (request.form.get("mode") or "guest").strip()
+    session["signed_in"] = True
+    session["user_name"] = "Guest" if mode == "guest" else "Scholarship Officer"
+    session["login_mode"] = mode
+    return redirect(url_for("dashboard"))
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
 
 
 # --------------------------------------------------------------------------
