@@ -36,7 +36,10 @@ def get_conn(role_context: dict | None = None):
             "DATABASE_URL is not set. Copy .env.example to .env and paste your "
             "Supabase connection string."
         )
-    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=False)
+    # connect_timeout so a stopped/unreachable DB fails fast with a clear error
+    # instead of hanging the request (which shows as "agent running" forever).
+    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=False,
+                           connect_timeout=6)
     try:
         with conn.cursor() as cur:
             if AGENT_USER_ID:
