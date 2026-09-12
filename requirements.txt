@@ -2,3 +2,4 @@ Flask>=3.0
 psycopg[binary]>=3.1
 python-dotenv>=1.0
 google-genai>=1.0     # optional: only used to phrase chat answers; app runs fine without it
+gunicorn>=21.2
