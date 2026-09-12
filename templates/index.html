@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=3" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4" />
   <script>
     // Apply saved theme before paint so there's no flash.
     try { var _t = localStorage.getItem("agent42-theme");
@@ -82,6 +82,7 @@
       <span>View as</span>
       <button class="role active" data-role="ACCOUNTS">Scholarship Officer</button>
       <button class="role" data-role="HOD">Head of Department</button>
+      <button class="role" data-role="ACCT">Accounts</button>
       <button class="role" data-role="STUDENT">Student</button>
     </div>
     <div class="kpis" id="kpis"><!-- filled by JS --></div>
@@ -120,6 +121,18 @@
       </span>
     </div>
   </footer>
+
+  <!-- toast -->
+  <div id="toast" class="toast" hidden></div>
+
+  <!-- ===================== Application pack modal (step 4) ===================== -->
+  <div id="prepare-modal" class="sch-modal" hidden>
+    <div class="sch-backdrop" data-close-prepare></div>
+    <div class="sch-card" role="dialog" aria-modal="true" aria-label="Application pack">
+      <button class="modal-x" data-close-prepare aria-label="Close">×</button>
+      <div id="prepare-body"></div>
+    </div>
+  </div>
 
   <!-- ===================== Add-scheme modal (Officer) ===================== -->
   <div id="scheme-modal" class="sch-modal" hidden>
@@ -193,6 +206,6 @@
     </form>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=3"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=4"></script>
 </body>
 </html>
