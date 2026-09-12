@@ -366,3 +366,22 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .sch-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
 .sch-error { margin-top: 12px; padding: 9px 12px; border-radius: 9px; background: #fee2e2; color: #991b1b; font-size: 13px; }
 @media (max-width: 560px) { .sch-grid { grid-template-columns: 1fr; } .sch-rule { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- Row actions, toast, application pack ---------- */
+.row-actions { display: flex; gap: 6px; margin-top: 6px; }
+.toast {
+  position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%) translateY(20px);
+  background: var(--indigo-2); color: #fff; padding: 12px 18px; border-radius: 12px;
+  font-size: 13.5px; box-shadow: var(--shadow-md); z-index: 300; opacity: 0;
+  transition: opacity .25s ease, transform .25s ease; max-width: 90vw;
+}
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.pack-pre { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 14px 0; }
+.pack-pre > div { display: flex; justify-content: space-between; gap: 10px; font-size: 13px; padding: 8px 10px; background: var(--bg); border-radius: 9px; }
+.pack-pre span { color: var(--muted); }
+.pack-pre b { color: var(--ink); }
+.pack-scheme { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-bottom: 10px; }
+.pack-h { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.pack-docs { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
+.pack-docs label { font-size: 13px; display: flex; align-items: center; gap: 8px; color: var(--ink); }
+@media (max-width: 560px) { .pack-pre { grid-template-columns: 1fr; } }
