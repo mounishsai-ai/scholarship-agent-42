@@ -429,5 +429,55 @@ function addMsg(text, who) {
   return div;
 }
 
+// ------------------------------------------------------------------ theme
+(function () {
+  const btn = $("#theme-toggle");
+  if (!btn) return;
+  const cur = () => document.documentElement.getAttribute("data-theme") || "light";
+  btn.addEventListener("click", () => {
+    const next = cur() === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    try { localStorage.setItem("agent42-theme", next); } catch (e) {}
+  });
+})();
+
+// ------------------------------------------------------------------ profile menu
+(function () {
+  const wrap = $("#profile"), btn = $("#avatar-btn"), menu = $("#profile-menu");
+  if (!wrap || !btn || !menu) return;
+  async function build() {
+    const name = menu.dataset.name || "Signed in";
+    const mode = menu.dataset.mode || "guest";
+    let roll = ROLES[currentRole].student;
+    if (!roll && /^\d{2}CSE\d{3}$/i.test(name)) roll = name.toUpperCase();
+    let detail = `<div class="pm-note">Scholarship section · Vignan University</div>`;
+    if (roll) {
+      try {
+        const s = (await getData("/api/students")).students.find(x => x.roll_no === roll);
+        if (s) detail = `<div class="pm-rows">
+          <div><span>Roll no</span><b>${esc(s.roll_no)}</b></div>
+          <div><span>Programme</span><b>${esc(s.programme_code)} · Year ${esc(s.year_of_study)}</b></div>
+          <div><span>CGPA</span><b>${esc(s.cgpa)}</b></div>
+          <div><span>Attendance</span><b>${esc(s.attendance_pct)}%</b></div>
+          <div><span>Category</span><b>${esc(s.social_category || "—")}</b></div></div>`;
+      } catch (e) { /* keep generic note */ }
+    }
+    menu.innerHTML = `
+      <div class="pm-head"><span class="pm-avatar">${esc(name[0].toUpperCase())}</span>
+        <div><div class="pm-name">${esc(name)}</div>
+          <div class="pm-mode">Signed in · ${esc(mode)}</div></div></div>
+      ${detail}
+      <a class="pm-signout" href="/logout">Sign out</a>`;
+  }
+  btn.addEventListener("click", async (e) => {
+    e.stopPropagation();
+    if (!menu.hidden) { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); return; }
+    await build(); menu.hidden = false; btn.setAttribute("aria-expanded", "true");
+  });
+  document.addEventListener("click", (e) => {
+    if (!wrap.contains(e.target)) { menu.hidden = true; btn.setAttribute("aria-expanded", "false"); }
+  });
+})();
+
 // ------------------------------------------------------------------ boot
 applyRole();
