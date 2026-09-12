@@ -635,3 +635,71 @@ def recent_runs(limit: int = 15) -> list[dict]:
         r["agent_run_id"] = str(r["agent_run_id"])
         r["started_at"] = r["started_at"].isoformat() if r["started_at"] else None
     return rows
+
+
+def _coerce(op: str, val):
+    """Turn a form value into the right JSON type for an eligibility rule."""
+    if op in ("in", "not_in"):
+        return [v.strip() for v in str(val).split(",") if v.strip()]
+    try:
+        f = float(val)
+        return int(f) if f.is_integer() else f
+    except (TypeError, ValueError):
+        return val
+
+
+def create_scheme(data: dict) -> dict:
+    """Officer action: register a new scholarship scheme. Builds the machine-
+    evaluable eligibility_criteria from the submitted rule rows and logs the run."""
+    code = (data.get("code") or "").strip().upper()
+    name = (data.get("name") or "").strip()
+    if not code or not name:
+        return {"error": "Scheme code and name are required."}
+
+    rules = []
+    for r in data.get("rules", []):
+        field, op, val = r.get("field"), r.get("op"), r.get("value")
+        if not field or not op or val in (None, ""):
+            continue
+        rules.append({"field": field, "op": op, "value": _coerce(op, val)})
+    criteria = {"all": rules}
+    docs = [d.strip() for d in (data.get("required_documents") or "").split(",") if d.strip()]
+    renewal = bool(data.get("renewal_required"))
+    renewal_criteria = ({"all": [{"field": "attendance_pct", "op": "gte", "value": 75}]}
+                        if renewal else None)
+    amount = data.get("benefit_amount")
+    try:
+        amount = float(amount) if amount not in (None, "") else None
+    except (TypeError, ValueError):
+        amount = None
+
+    with get_conn() as conn:
+        run_id = start_run(conn, "USER", {"scheme_code": code}, f"Create scheme {code}")
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """INSERT INTO finance.scholarship_scheme
+                         (code, name, provider_type, provider_name, benefit_type, benefit_amount,
+                          eligibility_criteria, required_documents, application_opens,
+                          application_closes, renewal_required, renewal_criteria,
+                          academic_year_id, is_active)
+                       VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,true)
+                       RETURNING scholarship_scheme_id""",
+                    (code, name, data.get("provider_type") or None, data.get("provider_name") or None,
+                     data.get("benefit_type") or None, amount,
+                     Jsonb(criteria), docs or None,
+                     data.get("application_opens") or None, data.get("application_closes") or None,
+                     renewal, Jsonb(renewal_criteria) if renewal_criteria else None,
+                     ACADEMIC_YEAR_ID),
+                )
+                sid = str(cur.fetchone()["scholarship_scheme_id"])
+        except Exception as exc:  # unique code, bad data, etc.
+            msg = str(exc)
+            if "unique" in msg.lower() or "duplicate" in msg.lower():
+                return {"error": f"A scheme with code {code} already exists."}
+            return {"error": f"Could not create scheme: {msg}"}
+        write_output(conn, run_id, "ACTION_PROPOSAL",
+                     {"scheme_id": sid, "code": code, "rules": rules},
+                     f"Registered new scholarship scheme {name} ({code}) with {len(rules)} rule(s).")
+        finish_run(conn, run_id)
+        return {"ok": True, "scheme_id": sid, "code": code, "name": name}
