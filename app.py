@@ -139,6 +139,16 @@ def api_student_eligibility(student_id):
     return _safe(lambda: engine.match_student(student_id))
 
 
+@app.route("/api/student/<student_id>/pack")
+def api_application_pack(student_id):
+    return _safe(lambda: engine.application_pack(student_id))
+
+
+@app.route("/api/notify/<student_id>", methods=["POST"])
+def api_notify(student_id):
+    return _safe(lambda: engine.notify_student(student_id))
+
+
 @app.route("/api/applications")
 def api_applications():
     return _safe(lambda: {"applications": engine.applications()})
