@@ -197,13 +197,31 @@
     });
   });
 
+  function playOverlay(label, go) {
+    if (overlay) {
+      var t = overlay.querySelector(".overlay-text");
+      if (t) t.textContent = label;
+      overlay.hidden = false;
+    }
+    window.setTimeout(go, 700);
+  }
+
   // Every sign-in path (guest, Google, and all modal methods) plays a short
   // overlay, then submits — a smooth hand-off into the dashboard.
   document.querySelectorAll('form[action$="/login"]').forEach(function (f) {
     f.addEventListener("submit", function (e) {
       e.preventDefault();
-      if (overlay) overlay.hidden = false;
-      window.setTimeout(function () { HTMLFormElement.prototype.submit.call(f); }, 750);
+      playOverlay("Signing you in…", function () { HTMLFormElement.prototype.submit.call(f); });
+    });
+  });
+
+  // "Open dashboard" links (shown once signed in) — same smooth hand-off,
+  // so entering the dashboard never jerks.
+  document.querySelectorAll('a[href$="/dashboard"]').forEach(function (a) {
+    a.addEventListener("click", function (e) {
+      e.preventDefault();
+      var href = a.getAttribute("href");
+      playOverlay("Opening dashboard…", function () { window.location.href = href; });
     });
   });
 })();
