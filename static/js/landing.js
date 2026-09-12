@@ -239,4 +239,13 @@
       playOverlay("Opening dashboard…", function () { window.location.href = href; });
     });
   });
+
+  // Back/forward (Alt+←) restores the page from bfcache with the overlay still
+  // showing — clear all overlays on show so it never gets stuck on "Opening…".
+  window.addEventListener("pageshow", function () {
+    if (overlay) overlay.hidden = true;
+    var g = document.getElementById("google-overlay");
+    if (g) g.hidden = true;
+    document.body.style.overflow = "";
+  });
 })();
