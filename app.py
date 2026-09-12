@@ -47,12 +47,16 @@ def dashboard():
 
 @app.route("/login", methods=["POST"])
 def login():
-    """Set a session flag and enter the dashboard. Two modes:
-    'google' (mock Google sign-in) and 'guest'. Visual entry point only —
-    no real credentials are handled and the dashboard is never gated on this."""
+    """Set a session flag and enter the dashboard. Modes: google, guest, email,
+    phone, regid, empid. Visual entry point only — no credentials are checked or
+    stored, and the dashboard is never gated on this."""
     mode = (request.form.get("mode") or "guest").strip()
+    ident = (request.form.get("identifier") or "").strip()
+    defaults = {"guest": "Guest", "google": "Scholarship Officer",
+                "email": "Scholarship Officer", "phone": "Scholarship Officer",
+                "regid": "Student", "empid": "Faculty"}
     session["signed_in"] = True
-    session["user_name"] = "Guest" if mode == "guest" else "Scholarship Officer"
+    session["user_name"] = ident or defaults.get(mode, "Scholarship Officer")
     session["login_mode"] = mode
     return redirect(url_for("dashboard"))
 
