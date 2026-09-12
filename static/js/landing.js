@@ -152,3 +152,58 @@
     });
   }
 })();
+
+// ============================================================
+// Sign-in modal + "signing you in" transition overlay.
+// Separate IIFE so it always runs, regardless of motion settings.
+// ============================================================
+(function () {
+  var modal = document.getElementById("signin-modal");
+  var overlay = document.getElementById("signin-overlay");
+
+  function openModal() {
+    if (!modal) return;
+    modal.hidden = false;
+    document.body.style.overflow = "hidden";
+    var first = modal.querySelector('.method-form:not([hidden]) input');
+    if (first) setTimeout(function () { first.focus(); }, 30);
+  }
+  function closeModal() {
+    if (!modal) return;
+    modal.hidden = true;
+    document.body.style.overflow = "";
+  }
+  document.querySelectorAll("[data-open-signin]").forEach(function (b) {
+    b.addEventListener("click", openModal);
+  });
+  document.querySelectorAll("[data-close-signin]").forEach(function (b) {
+    b.addEventListener("click", closeModal);
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") closeModal();
+  });
+
+  // method tabs inside the modal
+  document.querySelectorAll(".method-tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      document.querySelectorAll(".method-tab").forEach(function (x) { x.classList.remove("active"); });
+      t.classList.add("active");
+      var m = t.dataset.method;
+      document.querySelectorAll("[data-method-form]").forEach(function (f) {
+        f.hidden = f.dataset.methodForm !== m;
+      });
+      var inp = document.querySelector('[data-method-form="' + m + '"] input');
+      if (inp) inp.focus();
+    });
+  });
+
+  // Every sign-in path (guest, Google, and all modal methods) plays a short
+  // overlay, then submits — a smooth hand-off into the dashboard.
+  document.querySelectorAll('form[action$="/login"]').forEach(function (f) {
+    f.addEventListener("submit", function (e) {
+      e.preventDefault();
+      if (overlay) overlay.hidden = false;
+      window.setTimeout(function () { HTMLFormElement.prototype.submit.call(f); }, 750);
+    });
+  });
+})();
