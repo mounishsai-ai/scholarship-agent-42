@@ -28,6 +28,15 @@ function errorCard(el, e) {
     <div class="sub">${esc(e.message)}</div></div>`;
 }
 
+// Restart the panel entrance animation on every tab/role switch, even when the
+// data is cached (so switching always feels responsive).
+function replay(el) {
+  if (!el) return;
+  el.classList.remove("anim");
+  void el.offsetWidth;   // force reflow so the animation restarts
+  el.classList.add("anim");
+}
+
 // "Why?" expander shared by matrix / eligibility / renewal
 function whyBlock(criteria) {
   const items = criteria.map(r => {
@@ -89,6 +98,7 @@ function applyRole() {
   }
   loadKpis();
   const name = active.dataset.tab;
+  replay($("#panel-" + name));
   if (loaders[name]) loaders[name]();
 }
 
@@ -99,7 +109,9 @@ $$(".tab").forEach(tab => tab.addEventListener("click", () => {
   $$(".panel").forEach(p => p.classList.remove("active"));
   tab.classList.add("active");
   const name = tab.dataset.tab;
-  $("#panel-" + name).classList.add("active");
+  const panel = $("#panel-" + name);
+  panel.classList.add("active");
+  replay(panel);
   if (loaders[name]) loaders[name]();
 }));
 
