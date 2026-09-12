@@ -112,6 +112,12 @@ def _list_schemes():
         return {"schemes": engine.get_schemes(conn, active_only=False)}
 
 
+@app.route("/api/scheme", methods=["POST"])
+def api_create_scheme():
+    data = request.get_json(force=True)
+    return _safe(lambda: engine.create_scheme(data))
+
+
 @app.route("/api/students")
 def api_students():
     return _safe(_students)
