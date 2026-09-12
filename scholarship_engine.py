@@ -703,3 +703,74 @@ def create_scheme(data: dict) -> dict:
                      f"Registered new scholarship scheme {name} ({code}) with {len(rules)} rule(s).")
         finish_run(conn, run_id)
         return {"ok": True, "scheme_id": sid, "code": code, "name": name}
+
+
+def _rupees(n):
+    return "—" if n in (None, "") else "₹" + format(int(float(n)), ",d")
+
+
+def application_pack(student_id: str) -> dict:
+    """Step 4 — application preparation: for each scheme the student is eligible
+    for, the document checklist plus pre-filled institutional data."""
+    with get_conn() as conn:
+        facts = get_facts(conn, student_id)
+        if not facts:
+            return {"error": "student not found"}
+        schemes = get_schemes(conn)
+        prefilled = {
+            "Full name": facts["full_name"], "Roll number": facts["roll_no"],
+            "Programme / Year": f"{facts['programme_code']} · Year {facts['year_of_study']}",
+            "Social category": facts["social_category"] or "—",
+            "Annual family income": _rupees(facts["annual_income"]),
+            "CGPA": facts["cgpa"], "Attendance": f"{facts['attendance_pct']}%",
+        }
+        packs = []
+        for scheme in schemes:
+            if not evaluate(facts, scheme["eligibility_criteria"])["is_eligible"]:
+                continue
+            packs.append({
+                "scheme": scheme["name"], "code": scheme["code"],
+                "benefit": _rupees(scheme.get("benefit_amount")),
+                "deadline": scheme.get("application_closes") or "as published",
+                "documents": scheme.get("required_documents") or [],
+            })
+        return {"facts": facts, "prefilled": prefilled, "packs": packs}
+
+
+def notify_student(student_id: str) -> dict:
+    """Step 3 — notify a student of every scheme they are eligible for but have
+    not applied to, with benefit, deadline and the document list. Each draft is
+    an agent_output that WAITS for officer approval before it is 'sent'."""
+    with get_conn() as conn:
+        facts = get_facts(conn, student_id)
+        if not facts:
+            return {"error": "student not found"}
+        schemes = get_schemes(conn)
+        with conn.cursor() as cur:
+            cur.execute("SELECT scholarship_scheme_id FROM finance.scholarship_application "
+                        "WHERE student_id = %s", (student_id,))
+            applied = {str(r["scholarship_scheme_id"]) for r in cur.fetchall()}
+
+        run_id = start_run(conn, "USER", {"student_id": student_id},
+                           f"Notify {facts['roll_no']} of eligible schemes")
+        drafted = []
+        for scheme in schemes:
+            if scheme["scholarship_scheme_id"] in applied:
+                continue
+            if not evaluate(facts, scheme["eligibility_criteria"])["is_eligible"]:
+                continue
+            docs = scheme.get("required_documents") or []
+            deadline = scheme.get("application_closes") or "the published deadline"
+            msg = (f"To {facts['full_name']} ({facts['roll_no']}): you are eligible for "
+                   f"{scheme['name']} — benefit {_rupees(scheme.get('benefit_amount'))}. "
+                   f"Apply by {deadline}. Documents required: "
+                   + (", ".join(docs) if docs else "as per scheme") + ".")
+            write_output(conn, run_id, "ALERT",
+                         {"roll_no": facts["roll_no"], "student": facts["full_name"],
+                          "scheme": scheme["name"], "benefit": scheme.get("benefit_amount"),
+                          "deadline": scheme.get("application_closes"), "documents": docs},
+                         msg, subject_type="STUDENT", subject_id=student_id,
+                         requires_approval=True)
+            drafted.append(scheme["name"])
+        finish_run(conn, run_id)
+        return {"drafted": len(drafted), "schemes": drafted, "roll_no": facts["roll_no"]}
