@@ -440,3 +440,30 @@ a { color: inherit; text-decoration: none; }
 @media (max-width: 440px) {
   .method-tabs { grid-template-columns: repeat(2, 1fr); }
 }
+
+/* ============================ GOOGLE BLUFF ============================ */
+.g-overlay { position: fixed; inset: 0; z-index: 250; display: grid; place-items: center;
+  background: rgba(32, 33, 36, .6); animation: fadeIn .18s ease; }
+.g-card { width: 100%; max-width: 400px; background: #fff; border-radius: 12px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.4); padding: 40px 40px 28px; text-align: center;
+  font-family: "Roboto", "Inter", system-ui, sans-serif; color: #202124; animation: modalIn .22s ease; }
+.g-logo-big { display: inline-flex; margin-bottom: 16px; }
+.g-title { font-size: 22px; font-weight: 400; color: #202124; }
+.g-subtitle { font-size: 14px; color: #5f6368; margin-top: 6px; }
+.g-subtitle b { font-weight: 500; color: #202124; }
+.g-account { display: flex; align-items: center; gap: 14px; width: 100%; margin-top: 26px;
+  padding: 12px 14px; border: 1px solid #dadce0; border-radius: 10px; background: #fff; cursor: pointer;
+  text-align: left; transition: background .15s; }
+.g-account:hover { background: #f7f8f8; }
+.g-avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center;
+  background: #1a73e8; color: #fff; font-weight: 600; font-size: 15px; flex-shrink: 0; }
+.g-plus { background: #e8eaed; color: #5f6368; }
+.g-acc-text { display: flex; flex-direction: column; line-height: 1.35; }
+.g-acc-text b { font-weight: 500; font-size: 14px; }
+.g-acc-text span { font-size: 13px; color: #5f6368; }
+.g-another { display: flex; align-items: center; gap: 14px; margin-top: 8px; padding: 12px 14px;
+  font-size: 14px; color: #202124; cursor: pointer; }
+.g-spinner { width: 40px; height: 40px; margin: 6px auto 20px; border-radius: 50%;
+  border: 3px solid #e0e0e0; border-top-color: #1a73e8; animation: gspin .8s linear infinite; }
+@keyframes gspin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .g-spinner { animation-duration: 2s; } }
