@@ -20,7 +20,7 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "agent42-scholarship-vignan-cse-2026")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
 # Vertex AI path: uses your gcloud Application Default Credentials — NO api key.
 # Set GEMINI_USE_VERTEX=1 and GOOGLE_CLOUD_PROJECT=<project> to use your GCP credit.
 GEMINI_USE_VERTEX = os.environ.get("GEMINI_USE_VERTEX", "").strip().lower() in ("1", "true", "yes")
@@ -258,7 +258,20 @@ def _route_question(q: str):
     if has("scheme", "scholar", "list", "available", "provider", "benefit", "criteria", "document"):
         from db import get_conn
         with get_conn() as conn:
-            return "schemes", {"schemes": engine.get_schemes(conn)}
+            schemes = engine.get_schemes(conn)
+        cat = next((c.upper() for c in ("sc", "st", "obc", "ews") if f" {c} " in ql), None)
+        girl = has("girl", "women", "female", "pragati")
+
+        def _rules(s):
+            c = s["eligibility_criteria"] or {}
+            return (c.get("all") or []) + (c.get("any") or [])
+        if cat:
+            schemes = [s for s in schemes if any(
+                r.get("field") == "social_category" and cat in (r.get("value") or [])
+                for r in _rules(s))]
+        elif girl:
+            schemes = [s for s in schemes if any(r.get("field") == "gender" for r in _rules(s))]
+        return "schemes", {"schemes": schemes}
     if has("eligib", "qualif", "match"):
         return "coverage", engine.coverage_report()
     return "unknown", {}
@@ -279,20 +292,48 @@ def _student_facts(sid: str):
         return engine.get_facts(conn, sid)
 
 
+def _chat_context() -> dict:
+    """Compact, machine-true snapshot for the LLM: every scheme (with rules and
+    documents) and every student (with the schemes they qualify for). Lets Gemini
+    answer list/edge questions without ever inventing a fact."""
+    from db import get_conn
+    with get_conn() as conn:
+        students = engine.get_students(conn)
+        schemes = engine.get_schemes(conn)
+    sc = [{"code": s["code"], "name": s["name"], "provider_type": s["provider_type"],
+           "benefit_amount": s["benefit_amount"], "renewable": s["renewal_required"],
+           "eligibility": s["eligibility_criteria"], "documents": s["required_documents"],
+           "closes": s["application_closes"]} for s in schemes]
+    st = []
+    for f in students:
+        elig = [s["code"] for s in schemes
+                if engine.evaluate(f, s["eligibility_criteria"])["is_eligible"]]
+        st.append({"roll": f["roll_no"], "name": f["full_name"], "category": f["social_category"],
+                   "gender": f["gender"], "annual_income": f["annual_income"], "cgpa": f["cgpa"],
+                   "attendance_pct": f["attendance_pct"], "eligible_for": elig})
+    return {"schemes": sc, "students": st,
+            "total_eligible_matches": sum(len(s["eligible_for"]) for s in st),
+            "student_count": len(students)}
+
+
 def _phrase(question: str, intent: str, payload: dict) -> str:
-    """Turn engine output into a sentence. Uses Gemini if a key is present,
-    otherwise a deterministic template. Numbers always come from `payload`."""
+    """Phrase the answer. With Gemini configured, answer freely over the full
+    context (handles lists and edge cases); offline, use the deterministic
+    template. Every number/name must come from the provided facts."""
     fallback = _template_reply(intent, payload)
     client = gemini_client()
     if client is None:
         return fallback
     try:
+        ctx = _chat_context()
         prompt = (
-            "You are the Scholarship Agent for a college. Answer the user's question "
-            "using ONLY the JSON facts provided. Be concise, factual, and do not invent "
-            "any number that is not in the JSON.\n\n"
-            f"Question: {question}\n\nFacts (JSON):\n{json.dumps(payload, default=str)[:6000]}\n\n"
-            "Answer in 2-4 sentences."
+            "You are the Scholarship Agent for Vignan University, CSE. Answer the user's "
+            "question using ONLY the facts in the JSON below. Never invent a number, name, "
+            "scheme, or student that is not present; if the answer is not in the data, say so "
+            "plainly. Be concise: 1-3 sentences, or short bullet lines for a list.\n\n"
+            f"User question: {question}\n\n"
+            f"Focused result ({intent}): {json.dumps(payload, default=str)[:2500]}\n\n"
+            f"Full context: {json.dumps(ctx, default=str)[:9000]}\n"
         )
         resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)
         return (resp.text or fallback).strip()
@@ -365,7 +406,9 @@ def _template_reply(intent: str, payload: dict) -> str:
                 f"gap of {payload.get('coverage_gap',0)}.")
     if intent == "schemes":
         names = [s["name"] for s in payload.get("schemes", [])]
-        return "Active schemes: " + ", ".join(names) + "."
+        if not names:
+            return "No active schemes match that filter."
+        return "Schemes: " + ", ".join(names) + "."
     return HELP_TEXT
 
 
