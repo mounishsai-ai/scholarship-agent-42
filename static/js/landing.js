@@ -206,12 +206,27 @@
     window.setTimeout(go, 700);
   }
 
-  // Every sign-in path (guest, Google, and all modal methods) plays a short
-  // overlay, then submits — a smooth hand-off into the dashboard.
+  // Fake Google account-picker → "signing in" flow (no real OAuth, demo only).
+  function googleBluff(go) {
+    var ov = document.getElementById("google-overlay");
+    if (!ov) { playOverlay("Signing you in…", go); return; }
+    var s1 = ov.querySelector(".g-step-1"), s2 = ov.querySelector(".g-step-2");
+    s1.hidden = false; s2.hidden = true; ov.hidden = false;
+    window.setTimeout(function () {
+      s1.hidden = true; s2.hidden = false;
+      window.setTimeout(go, 1100);
+    }, 1400);
+  }
+
+  // Every sign-in path plays a short overlay, then submits — a smooth hand-off.
+  // Google mode shows the bluff account-picker; everything else the plain overlay.
   document.querySelectorAll('form[action$="/login"]').forEach(function (f) {
     f.addEventListener("submit", function (e) {
       e.preventDefault();
-      playOverlay("Signing you in…", function () { HTMLFormElement.prototype.submit.call(f); });
+      var modeEl = f.querySelector('[name="mode"]');
+      var submit = function () { HTMLFormElement.prototype.submit.call(f); };
+      if (modeEl && modeEl.value === "google") googleBluff(submit);
+      else playOverlay("Signing you in…", submit);
     });
   });
 
