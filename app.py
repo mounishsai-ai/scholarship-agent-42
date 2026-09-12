@@ -200,31 +200,52 @@ def api_chat():
 
 
 def _route_question(q: str):
-    """Map a question to one engine function. Rule-based, so it needs no LLM."""
-    ql = q.lower()
-    # Is a roll number mentioned?
+    """Map a question to one engine function. Rule-based (typo-tolerant), so it
+    needs no LLM. Anything unrecognised returns a helpful 'unknown' reply rather
+    than a wrong confident answer."""
     import re
-    roll = None
-    m = re.search(r"\b\d{2}cse\d{3}\b", ql)
-    if m:
-        roll = m.group(0).upper()
+    ql = " " + q.lower().strip() + " "
+    has = lambda *ws: any(w in ql for w in ws)
 
+    # roll number, tolerant of spaces/case (23cse001, 23 CSE 001, ...)
+    m = re.search(r"(\d{2})\s*cse\s*(\d{3})", ql)
+    roll = f"{m.group(1)}CSE{m.group(2)}".upper() if m else None
+
+    # greetings / help / thanks — before topic matching
+    if ql.strip() in ("hi", "hello", "hey", "yo", "hola", "namaste") or \
+       has("help", "what can you", "what do you do", "who are you", "capab", "how do you work"):
+        return "help", {}
+    if has("thank", "thanks", "thx", "great job", "well done"):
+        return "thanks", {}
+
+    # a specific student
     if roll:
         sid = _student_id_for_roll(roll)
         if sid:
+            if has("atten", "present", "class"):
+                return "student_fact", {"facts": _student_facts(sid), "field": "attendance"}
+            if has("cgpa", "gpa", "marks", "grade", "result"):
+                return "student_fact", {"facts": _student_facts(sid), "field": "cgpa"}
+            if has("fee", "due", "outstanding", "owe", "pay"):
+                return "student_fact", {"facts": _student_facts(sid), "field": "fee"}
+            if has("renew", "lapse", "lose", "risk"):
+                return "renewal", engine.renewal_risk()
             return "eligibility", engine.match_student(sid)
 
-    if any(w in ql for w in ("renew", "lose", "losing", "at risk", "attendance")):
+    # topics (roots catch common misspellings: attendence, scholarshp, ...)
+    if has("renew", "lapse", "losing", "lose", "at risk", "at-risk", "atten"):
         return "renewal", engine.renewal_risk()
-    if any(w in ql for w in ("reconcile", "reminder", "fee", "chased", "suppress", "dues")):
+    if has("reconcil", "remind", "fee", "dues", "chased", "suppress", "outstanding", "ledger"):
         return "reconciliation", engine.reconcile()
-    if any(w in ql for w in ("coverage", "how many", "gap", "covered", "eligible students")):
+    if has("coverage", "cover", "gap", "how many", "unclaimed", "reach", "left out", "missing out"):
         return "coverage", engine.coverage_report()
-    if any(w in ql for w in ("scheme", "schemes", "which scholarship", "list")):
+    if has("scheme", "scholar", "list", "available", "provider", "benefit", "criteria", "document"):
         from db import get_conn
         with get_conn() as conn:
             return "schemes", {"schemes": engine.get_schemes(conn)}
-    return "coverage", engine.coverage_report()
+    if has("eligib", "qualif", "match"):
+        return "coverage", engine.coverage_report()
+    return "unknown", {}
 
 
 def _student_id_for_roll(roll: str):
@@ -234,6 +255,12 @@ def _student_id_for_roll(roll: str):
             if s["roll_no"] == roll:
                 return s["student_id"]
     return None
+
+
+def _student_facts(sid: str):
+    from db import get_conn
+    with get_conn() as conn:
+        return engine.get_facts(conn, sid)
 
 
 def _phrase(question: str, intent: str, payload: dict) -> str:
@@ -257,7 +284,42 @@ def _phrase(question: str, intent: str, payload: dict) -> str:
         return fallback
 
 
+HELP_TEXT = ("I'm the Scholarship Agent. I can tell you who is eligible for which "
+             "scholarships, who is at risk of losing a renewal, our coverage gap, "
+             "fee reconciliations, and the scheme list. Try: \"which scholarships is "
+             "23CSE001 eligible for?\", \"who is at renewal risk?\", or \"what is our "
+             "coverage gap?\"")
+
+
+def _rupees(n):
+    return "₹0" if not n else "₹" + format(int(n), ",d")
+
+
 def _template_reply(intent: str, payload: dict) -> str:
+    if intent == "help":
+        return HELP_TEXT
+    if intent == "thanks":
+        return "Happy to help. Ask me anything about eligibility, renewals, fees or coverage."
+    if intent == "unknown":
+        return ("I'm not sure I caught that. I can answer about eligibility, renewals, "
+                "coverage, fees, or schemes — for example \"who is at renewal risk?\" or "
+                "\"which schemes is 23CSE002 eligible for?\"")
+    if intent == "student_fact":
+        f = payload.get("facts") or {}
+        name, roll = f.get("full_name", "This student"), f.get("roll_no", "")
+        field = payload.get("field")
+        if field == "attendance":
+            v = f.get("attendance_pct")
+            side = "at or above" if (v or 0) >= 75 else "below"
+            return (f"{name} ({roll}) has {v}% attendance — {side} the 75% most schemes "
+                    f"require to renew a scholarship.")
+        if field == "cgpa":
+            return (f"{name} ({roll}) has a CGPA of {f.get('cgpa')} with "
+                    f"{f.get('backlog_count', 0)} backlog(s).")
+        if field == "fee":
+            out = f.get("fee_outstanding")
+            return (f"{name} ({roll}) has no outstanding fees." if not out
+                    else f"{name} ({roll}) has an outstanding balance of {_rupees(out)}.")
     if intent == "eligibility":
         f = payload.get("facts", {})
         elig = [m["scheme"]["name"] for m in payload.get("matches", []) if m["is_eligible"]]
@@ -267,12 +329,18 @@ def _template_reply(intent: str, payload: dict) -> str:
                 f"{len(elig)} scheme(s): " + ", ".join(elig) + ".")
     if intent == "renewal":
         n = payload.get("at_risk_count", 0)
-        names = [r["student"]["full_name"] for r in payload.get("results", [])
+        names = [f"{r['student']['full_name']} ({r['student']['attendance_pct']}%)"
+                 for r in payload.get("results", [])
                  if r["risk_level"] in ("AT_RISK", "LIKELY_LOSS")]
-        return (f"{n} live scholarship(s) are at risk of non-renewal"
-                + (": " + ", ".join(names) if names else "") + ".")
+        base = ("Renewal rules require at least 75% attendance (and CGPA ≥ 6.5 for merit "
+                "schemes). ")
+        if n == 0:
+            return base + "All live scholarships currently meet their renewal conditions."
+        return base + f"{n} scholarship(s) are at risk: " + ", ".join(names) + "."
     if intent == "reconciliation":
         n = payload.get("suppress_count", 0)
+        if n == 0:
+            return "No fee reminders need suppressing — nothing is being chased that a scholarship covers."
         return (f"{n} fee reminder(s) should be suppressed because a sanctioned scholarship "
                 f"already covers the dues.")
     if intent == "coverage":
@@ -282,7 +350,7 @@ def _template_reply(intent: str, payload: dict) -> str:
     if intent == "schemes":
         names = [s["name"] for s in payload.get("schemes", [])]
         return "Active schemes: " + ", ".join(names) + "."
-    return "Here is what I found."
+    return HELP_TEXT
 
 
 # --------------------------------------------------------------------------
