@@ -268,3 +268,75 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Header: theme toggle + profile menu ---------- */
+.icon-btn {
+  display: inline-grid; place-items: center; width: 38px; height: 38px;
+  border: 1px solid var(--line); background: var(--card); color: var(--indigo);
+  border-radius: 10px; cursor: pointer; transition: all .16s ease;
+}
+.icon-btn:hover { border-color: var(--blue); color: var(--blue); }
+.ic-moon { display: none; }
+:root[data-theme="dark"] .ic-sun { display: none; }
+:root[data-theme="dark"] .ic-moon { display: inline; }
+
+.profile { position: relative; }
+.avatar {
+  width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
+  background: linear-gradient(135deg, var(--blue), var(--indigo)); color: #fff;
+  font-family: var(--font-alt); font-weight: 700; font-size: 15px;
+}
+.profile-menu {
+  position: absolute; right: 0; top: 48px; width: 264px; z-index: 40;
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: var(--shadow-md); padding: 14px; animation: menuIn .16s ease;
+}
+@keyframes menuIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.pm-head { display: flex; align-items: center; gap: 10px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+.pm-avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center;
+  background: linear-gradient(135deg, var(--blue), var(--indigo)); color: #fff; font-weight: 700; }
+.pm-name { font-weight: 700; color: var(--indigo); font-size: 14px; }
+.pm-mode { font-size: 12px; color: var(--muted); text-transform: capitalize; }
+.pm-rows { display: grid; gap: 7px; padding: 12px 0; }
+.pm-rows > div { display: flex; justify-content: space-between; font-size: 12.5px; }
+.pm-rows span { color: var(--muted); }
+.pm-rows b { color: var(--ink); font-family: var(--font-mono); }
+.pm-note { padding: 12px 0; font-size: 12.5px; color: var(--muted); }
+.pm-signout {
+  display: block; text-align: center; padding: 9px; border-radius: 10px;
+  background: #fee2e2; color: #991b1b; font-weight: 600; font-size: 13px; text-decoration: none;
+}
+.pm-signout:hover { background: #fecaca; }
+
+/* ============================ DARK MODE ============================ */
+:root[data-theme="dark"] {
+  --indigo: #e8eefc; --navy: #e8eefc;
+  --blue: #6f9cff; --blue-dark: #5b8bff; --gold: #f5b23f;
+  --ink: #e6ebf5; --muted: #97a3bd;
+  --line: #263149; --bg: #0e1526; --card: #151e33;
+  --shadow: 0 1px 3px rgba(0,0,0,.5), 0 10px 28px rgba(0,0,0,.4);
+  --shadow-md: 0 12px 34px rgba(0,0,0,.55);
+}
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(900px 380px at 90% -60px, #17253f 0, rgba(0,0,0,0) 70%),
+    linear-gradient(180deg, #0e1526 0%, #0b1120 240px, #0a0f1c 100%);
+}
+:root[data-theme="dark"] .topbar { background: rgba(21, 30, 51, .86); }
+:root[data-theme="dark"] .badge { background: #17223c; border-color: #2b3a5c; color: #cdd8f0; }
+:root[data-theme="dark"] th { background: #101a30; }
+:root[data-theme="dark"] tbody tr:hover td,
+:root[data-theme="dark"] tr:hover td { background: #18233d; }
+:root[data-theme="dark"] .tab:hover { background: #18233d; }
+:root[data-theme="dark"] .role { background: var(--card); color: var(--ink); }
+:root[data-theme="dark"] .why { background: #101a30; border-color: #2b3a5c; }
+:root[data-theme="dark"] .why-btn { background: #17223c; border-color: #2b3a5c; color: #9fc0ff; }
+:root[data-theme="dark"] .btn.ghost { background: var(--card); color: #9fc0ff; border-color: #2b3a5c; }
+:root[data-theme="dark"] .banner-warn { background: #2a1c0e; color: #f4c893; border-color: #5a3a12; }
+:root[data-theme="dark"] .chat-log { background: #0f1830; }
+:root[data-theme="dark"] .msg.bot { background: #151e33; border-color: #263149; color: var(--ink); }
+:root[data-theme="dark"] .chat-form { border-color: #263149; }
+:root[data-theme="dark"] .chat-form input { background: #0f1830; color: var(--ink); border-color: #263149; }
+:root[data-theme="dark"] .session-chip { background: #10241a; border-color: #1f5137; color: #8fe0b0; }
+:root[data-theme="dark"] .pm-signout { background: #3a1616; color: #ffb4b4; }
+:root[data-theme="dark"] .pm-signout:hover { background: #4a1c1c; }
