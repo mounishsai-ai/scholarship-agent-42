@@ -71,6 +71,12 @@ const ROLES = {
     tabs: ["coverage", "matrix", "applications", "renewal", "reconciliation", "schemes"],
     canAct: false, student: null,
   },
+  ACCT: {
+    label: "Accounts",
+    scope: "Accounts section — fees, disbursements and reminder suppression.",
+    tabs: ["coverage", "applications", "reconciliation", "activity"],
+    canAct: true, student: null,
+  },
   STUDENT: {
     label: "Student",
     scope: "Your own record only — 23CSE002, Arjun Rao.",
@@ -203,7 +209,10 @@ loaders.matrix = async () => {
         return `<td>${pill}
           <button class="why-btn">why</button>${whyBlock(c.criteria_result)}</td>`;
       }).join("");
-      return `<tr><td><b>${esc(r.student.roll_no)}</b><br><span class="note">${esc(r.student.full_name)}</span></td>${cells}</tr>`;
+      const acts = (R().canAct && !mine)
+        ? `<div class="row-actions"><button class="btn small" data-notify="${esc(r.student.student_id)}">Notify</button><button class="btn small ghost" data-prepare="${esc(r.student.student_id)}">Prepare</button></div>`
+        : "";
+      return `<tr><td><b>${esc(r.student.roll_no)}</b><br><span class="note">${esc(r.student.full_name)}</span>${acts}</td>${cells}</tr>`;
     }).join("");
     const title = mine ? "My eligibility" : "Eligibility Matrix — every student × every scheme";
     const sub = mine
@@ -216,8 +225,55 @@ loaders.matrix = async () => {
         <thead><tr><th>Student</th>${head}</tr></thead><tbody>${rows}</tbody></table></div>
     </div>`;
     wireWhy(el);
+    $$("[data-notify]", el).forEach(b => b.addEventListener("click", () => notifyStudent(b)));
+    $$("[data-prepare]", el).forEach(b => b.addEventListener("click", () => openPrepare(b.dataset.prepare)));
   } catch (e) { errorCard(el, e); }
 };
+
+// ---- Step 3: notify eligible students (drafts go to the approval queue) ----
+async function notifyStudent(btn) {
+  btn.disabled = true; const old = btn.textContent; btn.textContent = "Drafting…";
+  try {
+    const d = await api("/api/notify/" + btn.dataset.notify, { method: "POST" });
+    invalidateCache();
+    if (d.drafted === 0) showToast(`${d.roll_no}: already notified or applied — nothing new to send.`);
+    else showToast(`${d.drafted} notification(s) drafted for ${d.roll_no} — awaiting approval in Agent Activity.`);
+  } catch (e) { showToast("Could not notify: " + e.message); }
+  finally { btn.disabled = false; btn.textContent = old; }
+}
+
+// ---- Step 4: application pack (document checklist + pre-filled data) ----
+async function openPrepare(sid) {
+  const m = $("#prepare-modal"), body = $("#prepare-body");
+  try {
+    const d = await api("/api/student/" + sid + "/pack");
+    const pre = Object.entries(d.prefilled).map(([k, v]) =>
+      `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+    const packs = d.packs.length ? d.packs.map(p => `
+      <div class="pack-scheme">
+        <div class="pack-h"><b>${esc(p.scheme)}</b><span class="pill status">${esc(p.benefit)}</span></div>
+        <div class="note">Apply by ${esc(p.deadline)}</div>
+        <div class="pack-docs">${(p.documents.length ? p.documents : ["As per scheme"])
+          .map(x => `<label><input type="checkbox"> ${esc(x)}</label>`).join("")}</div>
+      </div>`).join("") : `<div class="note">Not currently eligible for any scheme.</div>`;
+    body.innerHTML = `
+      <h2>Application pack — ${esc(d.facts.full_name)} (${esc(d.facts.roll_no)})</h2>
+      <div class="sub">Pre-filled from institutional records; tick documents as collected.</div>
+      <div class="pack-pre">${pre}</div>
+      <div class="sch-rules-h">Eligible schemes & document checklist</div>
+      ${packs}`;
+    m.hidden = false;
+  } catch (e) { showToast("Could not open pack: " + e.message); }
+}
+
+// ---- toast ----
+let _toastTimer = null;
+function showToast(msg) {
+  const t = $("#toast"); if (!t) return;
+  t.textContent = msg; t.hidden = false; t.classList.add("show");
+  clearTimeout(_toastTimer);
+  _toastTimer = setTimeout(() => { t.classList.remove("show"); t.hidden = true; }, 4200);
+}
 
 // ------------------------------------------------------------------ Applications
 loaders.applications = async () => {
@@ -498,6 +554,12 @@ function addMsg(text, who) {
   $("#chat-log").scrollTop = $("#chat-log").scrollHeight;
   return div;
 }
+
+// close the application-pack modal
+(function () {
+  const m = $("#prepare-modal"); if (!m) return;
+  $$("[data-close-prepare]").forEach(b => b.addEventListener("click", () => { m.hidden = true; }));
+})();
 
 // ------------------------------------------------------------------ theme
 (function () {
