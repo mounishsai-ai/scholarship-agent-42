@@ -121,6 +121,47 @@
     </div>
   </footer>
 
+  <!-- ===================== Add-scheme modal (Officer) ===================== -->
+  <div id="scheme-modal" class="sch-modal" hidden>
+    <div class="sch-backdrop" data-close-scheme></div>
+    <div class="sch-card" role="dialog" aria-modal="true" aria-label="Add scholarship scheme">
+      <button class="modal-x" data-close-scheme aria-label="Close">×</button>
+      <h2>Add a scholarship scheme</h2>
+      <div class="sub">Register a new scheme. Its eligibility rules are evaluated automatically
+        against every student the moment you save.</div>
+      <form id="scheme-form">
+        <div class="sch-grid">
+          <label>Code<input name="code" placeholder="NMMS_CENTRAL" required></label>
+          <label>Name<input name="name" placeholder="National Means-cum-Merit Scholarship" required></label>
+          <label>Provider type
+            <select name="provider_type">
+              <option>CENTRAL</option><option>STATE</option><option>INSTITUTIONAL</option>
+              <option>PRIVATE</option><option>CORPORATE</option><option>ALUMNI</option>
+            </select></label>
+          <label>Provider name<input name="provider_name" placeholder="Ministry of Education"></label>
+          <label>Benefit type
+            <select name="benefit_type">
+              <option>FIXED_AMOUNT</option><option>FULL_TUITION</option><option>PARTIAL</option><option>MAINTENANCE</option>
+            </select></label>
+          <label>Benefit amount (₹)<input name="benefit_amount" type="number" placeholder="50000"></label>
+          <label>Opens<input name="application_opens" type="date"></label>
+          <label>Closes<input name="application_closes" type="date"></label>
+          <label class="sch-wide">Required documents (comma-separated)
+            <input name="required_documents" placeholder="Income Certificate, Aadhaar Card, Marksheet"></label>
+          <label class="sch-check"><input name="renewal_required" type="checkbox"> Renewable (needs ≥ 75% attendance)</label>
+        </div>
+        <div class="sch-rules-h">Eligibility rules</div>
+        <div id="sch-rules"></div>
+        <button type="button" class="btn ghost small" id="sch-add-rule">+ Add rule</button>
+        <div class="sch-actions">
+          <button type="button" class="btn ghost" data-close-scheme>Cancel</button>
+          <button type="submit" class="btn">Create scheme</button>
+        </div>
+        <div id="sch-error" class="sch-error" hidden></div>
+      </form>
+    </div>
+  </div>
+
   <!-- ===================== Chat widget (Buji) ===================== -->
   <button id="chat-toggle" class="chat-toggle" title="Ask the Scholarship Agent" aria-label="Ask the Scholarship Agent">
     <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>

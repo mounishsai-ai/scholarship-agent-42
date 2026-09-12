@@ -340,3 +340,29 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 :root[data-theme="dark"] .session-chip { background: #10241a; border-color: #1f5137; color: #8fe0b0; }
 :root[data-theme="dark"] .pm-signout { background: #3a1616; color: #ffb4b4; }
 :root[data-theme="dark"] .pm-signout:hover { background: #4a1c1c; }
+
+/* ---------- Add-scheme modal ---------- */
+.sch-modal { position: fixed; inset: 0; z-index: 120; display: grid; place-items: center; padding: 20px; }
+.sch-backdrop { position: absolute; inset: 0; background: rgba(9, 18, 45, .55); backdrop-filter: blur(3px); }
+.sch-card {
+  position: relative; z-index: 1; width: 100%; max-width: 560px; max-height: 88vh; overflow-y: auto;
+  background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 24px;
+  box-shadow: var(--shadow-md); animation: menuIn .18s ease;
+}
+.sch-card h2 { font-family: var(--font-display); margin: 0 0 4px; color: var(--indigo); font-size: 19px; }
+.sch-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+.sch-grid label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 600; color: var(--indigo); }
+.sch-grid input, .sch-grid select, .sch-rule select, .sch-rule input {
+  border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; font-size: 13.5px;
+  font-family: inherit; background: var(--card); color: var(--ink); outline: none;
+}
+.sch-grid input:focus, .sch-grid select:focus, .sch-rule input:focus, .sch-rule select:focus { border-color: var(--blue); }
+.sch-wide { grid-column: 1 / -1; }
+.sch-check { grid-column: 1 / -1; flex-direction: row !important; align-items: center; gap: 8px !important; }
+.sch-check input { width: auto; }
+.sch-rules-h { font-weight: 700; color: var(--indigo); font-size: 13px; margin: 6px 0 8px; }
+.sch-rule { display: grid; grid-template-columns: 1.3fr 1fr 1.2fr auto; gap: 8px; margin-bottom: 8px; }
+.r-del { border: 1px solid var(--line); background: var(--card); color: var(--bad); border-radius: 8px; cursor: pointer; font-size: 16px; }
+.sch-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+.sch-error { margin-top: 12px; padding: 9px 12px; border-radius: 9px; background: #fee2e2; color: #991b1b; font-size: 13px; }
+@media (max-width: 560px) { .sch-grid { grid-template-columns: 1fr; } .sch-rule { grid-template-columns: 1fr 1fr; } }
