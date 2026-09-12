@@ -21,6 +21,32 @@ app.secret_key = os.environ.get("SECRET_KEY", "agent42-scholarship-vignan-cse-20
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
+# Vertex AI path: uses your gcloud Application Default Credentials — NO api key.
+# Set GEMINI_USE_VERTEX=1 and GOOGLE_CLOUD_PROJECT=<project> to use your GCP credit.
+GEMINI_USE_VERTEX = os.environ.get("GEMINI_USE_VERTEX", "").strip().lower() in ("1", "true", "yes")
+GEMINI_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
+GEMINI_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
+LLM_ON = bool(GEMINI_API_KEY) or (GEMINI_USE_VERTEX and bool(GEMINI_PROJECT))
+
+_gemini = {"client": None, "tried": False}
+
+
+def gemini_client():
+    """A google-genai client via AI Studio key OR Vertex ADC, or None if neither
+    is configured / the library is missing. Cached after the first attempt."""
+    if _gemini["tried"]:
+        return _gemini["client"]
+    _gemini["tried"] = True
+    try:
+        from google import genai
+        if GEMINI_API_KEY:
+            _gemini["client"] = genai.Client(api_key=GEMINI_API_KEY)
+        elif GEMINI_USE_VERTEX and GEMINI_PROJECT:
+            _gemini["client"] = genai.Client(vertexai=True, project=GEMINI_PROJECT,
+                                             location=GEMINI_LOCATION)
+    except Exception:
+        _gemini["client"] = None
+    return _gemini["client"]
 
 
 # --------------------------------------------------------------------------
@@ -30,7 +56,7 @@ GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.0-flash").strip()
 def index():
     """The premium animated front door (landing page)."""
     return render_template("landing.html", db_ready=db_configured(),
-                           chat_llm=bool(GEMINI_API_KEY),
+                           chat_llm=LLM_ON,
                            signed_in=bool(session.get("signed_in")),
                            user_name=session.get("user_name", ""))
 
@@ -40,7 +66,7 @@ def dashboard():
     """The working data dashboard. Reachable with or without login (lenient
     by design, so the live demo always opens)."""
     return render_template("index.html", db_ready=db_configured(),
-                           chat_llm=bool(GEMINI_API_KEY),
+                           chat_llm=LLM_ON,
                            signed_in=bool(session.get("signed_in")),
                            user_name=session.get("user_name", ""))
 
@@ -72,7 +98,7 @@ def logout():
 # --------------------------------------------------------------------------
 @app.route("/api/health")
 def health():
-    return jsonify({"db_configured": db_configured(), "llm": bool(GEMINI_API_KEY)})
+    return jsonify({"db_configured": db_configured(), "llm": LLM_ON})
 
 
 @app.route("/api/schemes")
@@ -214,11 +240,10 @@ def _phrase(question: str, intent: str, payload: dict) -> str:
     """Turn engine output into a sentence. Uses Gemini if a key is present,
     otherwise a deterministic template. Numbers always come from `payload`."""
     fallback = _template_reply(intent, payload)
-    if not GEMINI_API_KEY:
+    client = gemini_client()
+    if client is None:
         return fallback
     try:
-        from google import genai
-        client = genai.Client(api_key=GEMINI_API_KEY)
         prompt = (
             "You are the Scholarship Agent for a college. Answer the user's question "
             "using ONLY the JSON facts provided. Be concise, factual, and do not invent "
