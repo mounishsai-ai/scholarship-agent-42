@@ -339,9 +339,79 @@ loaders.schemes = async () => {
         <div>${docs}</div>
       </div>`;
     }).join("");
-    el.innerHTML = cards || `<div class="card"><h2>No schemes</h2></div>`;
+    const addBtn = R().canAct
+      ? `<div class="actions-row"><button class="btn" id="open-scheme">+ Add scheme</button>
+           <span class="note">Officer can register a new scholarship — it is matched against all students instantly.</span></div>`
+      : "";
+    el.innerHTML = addBtn + (cards || `<div class="card"><h2>No schemes</h2></div>`);
+    const ob = $("#open-scheme"); if (ob) ob.addEventListener("click", openSchemeModal);
   } catch (e) { errorCard(el, e); }
 };
+
+// ------------------------------------------------------------------ add scheme
+const RULE_FIELDS = [["social_category", "Social category"], ["annual_income", "Annual income"],
+  ["cgpa", "CGPA"], ["attendance_pct", "Attendance %"], ["gender", "Gender"],
+  ["year_of_study", "Year of study"], ["programme_code", "Programme"], ["backlog_count", "Backlogs"]];
+const RULE_OPS = [["lte", "≤"], ["gte", "≥"], ["lt", "<"], ["gt", ">"], ["eq", "="], ["in", "one of"], ["not_in", "not one of"]];
+
+function addRuleRow(field, op, val) {
+  const host = $("#sch-rules"); if (!host) return;
+  const div = document.createElement("div");
+  div.className = "sch-rule";
+  div.innerHTML =
+    `<select class="r-field">${RULE_FIELDS.map(f => `<option value="${f[0]}"${f[0] === field ? " selected" : ""}>${f[1]}</option>`).join("")}</select>
+     <select class="r-op">${RULE_OPS.map(o => `<option value="${o[0]}"${o[0] === op ? " selected" : ""}>${o[1]}</option>`).join("")}</select>
+     <input class="r-val" placeholder="value (comma for lists)" value="${val ? esc(val) : ""}">
+     <button type="button" class="r-del" aria-label="Remove rule">×</button>`;
+  div.querySelector(".r-del").addEventListener("click", () => div.remove());
+  host.appendChild(div);
+}
+
+function openSchemeModal() {
+  const m = $("#scheme-modal"); if (!m) return;
+  $("#sch-rules").innerHTML = "";
+  addRuleRow("annual_income", "lte", "250000");
+  addRuleRow("cgpa", "gte", "7.0");
+  const err = $("#sch-error"); if (err) err.hidden = true;
+  m.hidden = false;
+}
+
+(function () {
+  const m = $("#scheme-modal"); if (!m) return;
+  $$("[data-close-scheme]").forEach(b => b.addEventListener("click", () => { m.hidden = true; }));
+  const add = $("#sch-add-rule"); if (add) add.addEventListener("click", () => addRuleRow("cgpa", "gte", ""));
+  const form = $("#scheme-form");
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const f = new FormData(form);
+    const rules = $$(".sch-rule", m).map(r => ({
+      field: r.querySelector(".r-field").value,
+      op: r.querySelector(".r-op").value,
+      value: r.querySelector(".r-val").value,
+    }));
+    const body = {
+      code: f.get("code"), name: f.get("name"),
+      provider_type: f.get("provider_type"), provider_name: f.get("provider_name"),
+      benefit_type: f.get("benefit_type"), benefit_amount: f.get("benefit_amount"),
+      application_opens: f.get("application_opens"), application_closes: f.get("application_closes"),
+      required_documents: f.get("required_documents"),
+      renewal_required: form.querySelector('[name="renewal_required"]').checked,
+      rules,
+    };
+    const btn = form.querySelector('button[type="submit"]');
+    btn.disabled = true; btn.textContent = "Creating…";
+    try {
+      await api("/api/scheme", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body)
+      });
+      m.hidden = true; form.reset();
+      invalidateCache(); loadKpis(); loaders.schemes();
+    } catch (err) {
+      const e2 = $("#sch-error"); e2.textContent = err.message; e2.hidden = false;
+    } finally { btn.disabled = false; btn.textContent = "Create scheme"; }
+  });
+})();
 
 // ------------------------------------------------------------------ Agent activity
 loaders.activity = async () => {
