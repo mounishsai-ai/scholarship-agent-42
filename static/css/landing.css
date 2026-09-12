@@ -339,7 +339,7 @@ a { color: inherit; text-decoration: none; }
 .footer-event { margin: 20px 0 0; font-size: 13.5px; color: #9fb0d4; line-height: 1.5; }
 .footer-h { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #7f92bd; margin-bottom: 14px; }
 .badge-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.badge-strip { height: 34px; }
+.badge-strip { height: 54px; width: auto; }
 .acc-badge { font-family: var(--font-alt); font-size: 11.5px; font-weight: 700; color: #dbe6ff; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); border-radius: 999px; padding: 5px 11px; }
 .footer-team ul { list-style: none; margin: 0 0 16px; padding: 0; }
 .footer-team li { font-size: 15px; color: #eef2fb; font-weight: 600; padding: 3px 0; }

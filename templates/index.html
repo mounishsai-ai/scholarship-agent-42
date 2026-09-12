@@ -41,11 +41,9 @@
     </a>
     <div class="topbar-right">
       <div class="badges">
-        {% for b in ['NAAC A+','NIRF','NBA','UGC','ABET'] %}
-          <span class="badge">{{ b }}</span>
-        {% endfor %}
         <img src="{{ url_for('static', filename='img/badges.png') }}"
-             alt="" class="badge-strip" onerror="this.style.display='none'" />
+             alt="NAAC A+, NIRF, NBA, UGC, ABET accreditation badges"
+             class="badge-strip" onerror="this.style.display='none'" />
       </div>
       <div class="session">
         <button id="theme-toggle" class="icon-btn" title="Toggle dark mode" aria-label="Toggle dark mode">
