@@ -87,6 +87,14 @@ const ROLES = {
 let currentRole = "ACCOUNTS";
 const R = () => ROLES[currentRole];
 
+// Session role context: guest may preview every role; a real sign-in is locked
+// to one role (this is what evaluators check — a student can't see the officer view).
+const APP = {
+  role: document.body.dataset.role || "GUEST",
+  canSwitch: (document.body.dataset.canSwitch || "yes") !== "no",
+  student: document.body.dataset.roleStudent || "",
+};
+
 function applyRole() {
   const role = R();
   const note = $("#scope-note");
@@ -528,18 +536,59 @@ async function decide(btn, decision) {
 // ------------------------------------------------------------------ Chat
 $("#chat-toggle").addEventListener("click", () => $("#chat").classList.toggle("hidden"));
 $("#chat-close").addEventListener("click", () => $("#chat").classList.add("hidden"));
+
+// ---- image attach ----
+let pendingImage = null;
+const imgInput = $("#chat-image"), attach = $("#chat-attach");
+if (imgInput) imgInput.addEventListener("change", () => {
+  const f = imgInput.files && imgInput.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    pendingImage = reader.result;
+    attach.hidden = false;
+    attach.innerHTML = `<img src="${pendingImage}" alt="attachment" />
+      <span>Image attached</span><button type="button" id="chat-attach-x" aria-label="Remove">×</button>`;
+    $("#chat-attach-x").addEventListener("click", clearImage);
+  };
+  reader.readAsDataURL(f);
+});
+function clearImage() {
+  pendingImage = null;
+  if (attach) { attach.hidden = true; attach.innerHTML = ""; }
+  if (imgInput) imgInput.value = "";
+}
+
+// ---- voice input (Web Speech API; graceful if unsupported) ----
+const mic = $("#chat-mic");
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let recog = null, listening = false;
+if (mic && SR) {
+  recog = new SR(); recog.lang = "en-IN"; recog.interimResults = false;
+  recog.onresult = (e) => { $("#chat-input").value = e.results[0][0].transcript; };
+  recog.onend = () => { listening = false; mic.classList.remove("live"); };
+  recog.onerror = () => { listening = false; mic.classList.remove("live"); };
+  mic.addEventListener("click", () => {
+    if (listening) { recog.stop(); return; }
+    try { recog.start(); listening = true; mic.classList.add("live"); } catch (e) {}
+  });
+} else if (mic) {
+  mic.addEventListener("click", () => addMsg("Voice input isn't supported in this browser.", "bot"));
+}
+
 $("#chat-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const input = $("#chat-input");
   const text = input.value.trim();
-  if (!text) return;
-  addMsg(text, "me");
-  input.value = "";
+  if (!text && !pendingImage) return;
+  addMsg(text || "🖼 image", "me");
+  const img = pendingImage;
+  input.value = ""; clearImage();
   const thinking = addMsg("…", "bot");
   try {
     const d = await api("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text })
+      body: JSON.stringify({ message: text, image: img, role: currentRole, viewer: R().student || "" })
     });
     thinking.innerHTML = `<span class="tag">${esc(d.intent || "answer")}</span>${esc(d.reply)}`;
   } catch (err) {
@@ -612,4 +661,17 @@ function addMsg(text, who) {
 })();
 
 // ------------------------------------------------------------------ boot
+(function initRoleContext() {
+  if (APP.student && ROLES.STUDENT) ROLES.STUDENT.student = APP.student;
+  const rs = document.querySelector(".role-switch");
+  if (!APP.canSwitch && ROLES[APP.role]) {
+    currentRole = APP.role;                       // locked to the signed-in role
+    if (rs) rs.innerHTML =
+      `<span class="signed-role">Signed in as <b>${esc(ROLES[APP.role].label)}</b> — you see only this role's view.</span>
+       <a class="linkbtn" href="/logout">Use guest login to preview all roles</a>`;
+  } else if (rs) {
+    rs.insertAdjacentHTML("beforeend",
+      `<span class="guest-note">Guest preview — switch roles to explore. In production each user sees only their own role.</span>`);
+  }
+})();
 applyRole();
