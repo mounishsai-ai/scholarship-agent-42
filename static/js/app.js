@@ -742,3 +742,17 @@ function addMsg(text, who) {
   }
 })();
 applyRole();
+
+// Platform status bar: fill the live DB provider and jump to Integrations.
+(function () {
+  const link = document.querySelector("[data-goto-integrations]");
+  const intTab = document.querySelector('.tab[data-tab="integrations"]');
+  if (link) {
+    if (!intTab || intTab.hidden) link.style.display = "none";
+    else link.addEventListener("click", (e) => { e.preventDefault(); intTab.click(); });
+  }
+  getData("/api/integrations").then(d => {
+    const el = $("#pb-db");
+    if (el && d && d.database && d.database.provider) el.textContent = d.database.provider;
+  }).catch(() => {});
+})();

@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=11" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=1" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -74,6 +74,16 @@
       </div>
     </div>
   </header>
+
+  <!-- Always-visible platform status: DB connection + declared integrations -->
+  <div class="platform-bar" id="platform-bar">
+    <span class="pb-item"><span class="pb-dot"></span><b id="pb-db">Platform database</b>&nbsp;connected</span>
+    <span class="pb-sep">·</span>
+    <span class="pb-item">Consumes <b>Agent&nbsp;10</b>, <b>Agent&nbsp;11</b></span>
+    <span class="pb-sep">·</span>
+    <span class="pb-item">Feeds <b>Agent&nbsp;40</b>, <b>Agent&nbsp;41</b>, <b>Agent&nbsp;43</b></span>
+    <a href="#" class="pb-link" data-goto-integrations>See live data &amp; lineage →</a>
+  </div>
 
   {% if not db_ready %}
   <div class="banner banner-warn">
@@ -232,7 +242,7 @@
     </form>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=8"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=9"></script>
   <script src="{{ url_for('static', filename='js/consent.js') }}?v=1"></script>
 </body>
 </html>
