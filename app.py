@@ -517,11 +517,13 @@ def _template_reply(intent: str, payload: dict) -> str:
         return "Schemes: " + ", ".join(names) + "."
     if intent == "integrations":
         db = payload.get("database", {})
-        return (f"Yes — connected to the shared platform PostgreSQL database "
-                f"({db.get('runs_logged', 0)} agent runs logged, each with its data sources recorded). "
-                f"It consumes Agent 10 (academic performance) and Agent 11 (attendance), and feeds "
-                f"Agent 40 (fee management), 41 (fee reminders) and 43 (education loans). Every number "
-                f"traces to real records — open the Integrations tab to see the live lineage.")
+        prov = db.get("provider", "the platform database")
+        inst = f" ({db.get('instance')})" if db.get("instance") else ""
+        return (f"Yes — connected to {prov}{inst}, with {db.get('runs_logged', 0)} agent runs logged, "
+                f"each recording its source records. It consumes Agent 10 (academic performance) and "
+                f"Agent 11 (attendance), and feeds Agent 40 (fee management), 41 (fee reminders) and "
+                f"43 (education loans). Open the Integrations tab to see the live server clock, the "
+                f"exact shared tables and their live row counts.")
     return HELP_TEXT
 
 

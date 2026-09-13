@@ -751,7 +751,12 @@ def integration_report() -> dict:
                    (SELECT count(*) FROM finance.scholarship_application) AS applications,
                    (SELECT count(*) FROM finance.fee_demand)              AS fee_demands,
                    (SELECT count(*) FROM finance.reminder_dispatch)       AS reminders,
-                   (SELECT count(*) FROM agentops.agent_run WHERE agent_id = %s) AS runs_logged""",
+                   (SELECT count(*) FROM agentops.agent_run WHERE agent_id = %s) AS runs_logged,
+                   (SELECT count(DISTINCT schemaname) FROM pg_tables
+                     WHERE schemaname NOT IN ('pg_catalog', 'information_schema')) AS schema_count,
+                   (SELECT count(*) FROM pg_tables
+                     WHERE schemaname NOT IN ('pg_catalog', 'information_schema')) AS table_count,
+                   now() AS db_time, version() AS db_version""",
                     (AGENT_ID,))
         c = cur.fetchone()
         cur.execute("""
@@ -764,9 +769,28 @@ def integration_report() -> dict:
     for p in prov:
         p["started_at"] = p["started_at"].isoformat() if p["started_at"] else None
 
+    # Identify the actual database from the live connection string (honest —
+    # shows Google Cloud SQL in production, local Postgres in dev).
+    import re as _re
+    from db import DATABASE_URL
+    url = DATABASE_URL or ""
+    if "/cloudsql/" in url:
+        provider = "Google Cloud SQL"
+        m = _re.search(r"/cloudsql/([^?&\"']+)", url)
+        instance = m.group(1) if m else ""
+    else:
+        provider = "PostgreSQL"
+        m = _re.search(r"@([^/?]+)", url)
+        instance = m.group(1) if m else "local"
+    db_version = (c.get("db_version") or "").split(" on ")[0]
+    db_time = c["db_time"].isoformat() if c.get("db_time") else None
+
     return {
         "database": {
-            "engine": "PostgreSQL", "connected": True,
+            "provider": provider, "instance": instance, "version": db_version,
+            "server_time": db_time, "connected": True,
+            "schemas": c.get("schema_count"), "tables": c.get("table_count"),
+            "source": "schema_full.sql (the platform schema provided for the event)",
             "reads": [
                 {"object": "people.v_student_profile (view)", "rows": c["students"]},
                 {"object": "attendance.attendance_summary", "rows": c["attendance_rows"]},
