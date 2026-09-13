@@ -385,3 +385,16 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .pack-docs { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; }
 .pack-docs label { font-size: 13px; display: flex; align-items: center; gap: 8px; color: var(--ink); }
 @media (max-width: 560px) { .pack-pre { grid-template-columns: 1fr; } }
+
+/* ---------- Footer legal links + cookie banner ---------- */
+.dash-footer-meta a { color: #9fb4e0; text-decoration: none; }
+.dash-footer-meta a:hover { color: #fff; text-decoration: underline; }
+.cookie-banner { position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 660px; margin: 0 auto;
+  background: var(--indigo-2); color: #fff; border-radius: 14px; padding: 13px 16px; display: flex; align-items: center;
+  gap: 14px; justify-content: space-between; box-shadow: 0 14px 40px rgba(0,0,0,.35); z-index: 400; font-size: 13.5px; }
+.cookie-banner[hidden] { display: none; }
+.cookie-banner a { color: #9fc0ff; }
+.cookie-banner button { background: var(--blue); color: #fff; border: none; border-radius: 9px; padding: 8px 16px;
+  font-weight: 600; cursor: pointer; flex-shrink: 0; font-family: inherit; }
+.cookie-banner button:hover { background: var(--blue-dark); }
+@media (max-width: 520px) { .cookie-banner { flex-direction: column; align-items: flex-start; gap: 10px; } }

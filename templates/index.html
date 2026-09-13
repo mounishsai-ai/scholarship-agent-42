@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=4" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=5" />
   <script>
     // Apply saved theme before paint so there's no flash.
     try { var _t = localStorage.getItem("agent42-theme");
@@ -115,6 +115,9 @@
       <span>Vignan University · CSE · Agentic AI Day 2026 — Agent 42, the Scholarship Agent</span>
       <span class="dash-footer-meta">
         Team: Mounish Sai · Ch. V. K. Ranjith Kumar ·
+        <a href="{{ url_for('privacy') }}">Privacy</a> ·
+        <a href="{{ url_for('terms') }}">Terms</a> ·
+        <a href="{{ url_for('cookies') }}">Cookies</a> ·
         <a href="https://github.com/mounishsai-ai/scholarship-agent-42" target="_blank" rel="noopener">GitHub</a>
       </span>
     </div>
@@ -122,6 +125,26 @@
 
   <!-- toast -->
   <div id="toast" class="toast" hidden></div>
+
+  <!-- cookie consent -->
+  <div id="cookie-banner" class="cookie-banner" hidden>
+    <span>We use a sign-in cookie and remember your theme preference — no tracking.
+      <a href="{{ url_for('cookies') }}">Learn&nbsp;more</a>.</span>
+    <button id="cookie-ok" type="button">Got it</button>
+  </div>
+  <script>
+    (function () {
+      try {
+        var b = document.getElementById("cookie-banner");
+        if (!b) return;
+        if (localStorage.getItem("agent42-cookie-consent") !== "1") b.hidden = false;
+        document.getElementById("cookie-ok").addEventListener("click", function () {
+          try { localStorage.setItem("agent42-cookie-consent", "1"); } catch (e) {}
+          b.hidden = true;
+        });
+      } catch (e) {}
+    })();
+  </script>
 
   <!-- ===================== Application pack modal (step 4) ===================== -->
   <div id="prepare-modal" class="sch-modal" hidden>

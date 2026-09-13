@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=1" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=2" />
 </head>
 <body>
 
@@ -413,8 +413,12 @@
     </div>
   </div>
   <div class="footer-bottom wrap">
-    <span>© 2026 Agent&nbsp;42 · Built for Agentic&nbsp;AI&nbsp;Day, Vignan University CSE.</span>
-    <span>Deterministic engine · human-in-the-loop · full audit trail.</span>
+    <span>© 2026 Agent&nbsp;42 · Vignan University CSE.</span>
+    <span class="footer-legal">
+      <a href="{{ url_for('privacy') }}">Privacy</a> ·
+      <a href="{{ url_for('terms') }}">Terms</a> ·
+      <a href="{{ url_for('cookies') }}">Cookies</a>
+    </span>
   </div>
 </footer>
 
@@ -501,6 +505,26 @@
     <div class="overlay-bar"><span></span></div>
   </div>
 </div>
+
+<!-- ============ Cookie consent ============ -->
+<div id="cookie-banner" class="cookie-banner" hidden>
+  <span>We use a sign-in cookie and remember your theme preference — no tracking.
+    <a href="{{ url_for('cookies') }}">Learn&nbsp;more</a>.</span>
+  <button id="cookie-ok" type="button">Got it</button>
+</div>
+<script>
+  (function () {
+    try {
+      var b = document.getElementById("cookie-banner");
+      if (!b) return;
+      if (localStorage.getItem("agent42-cookie-consent") !== "1") b.hidden = false;
+      document.getElementById("cookie-ok").addEventListener("click", function () {
+        try { localStorage.setItem("agent42-cookie-consent", "1"); } catch (e) {}
+        b.hidden = true;
+      });
+    } catch (e) {}
+  })();
+</script>
 
 <!-- ============ Google sign-in (bluff) — no real OAuth, demo only ============ -->
 <div id="google-overlay" class="g-overlay" hidden>
