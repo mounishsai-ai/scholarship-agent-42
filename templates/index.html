@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=9" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=10" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=1" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -106,6 +106,7 @@
     <button class="tab" data-tab="reconciliation">Fee Reconciliation</button>
     <button class="tab" data-tab="schemes">Scheme Register</button>
     <button class="tab" data-tab="activity">Agent Activity</button>
+    <button class="tab" data-tab="integrations">Integrations</button>
   </nav>
 
   <main class="panels">
@@ -116,6 +117,7 @@
     <section class="panel" id="panel-reconciliation"></section>
     <section class="panel" id="panel-schemes"></section>
     <section class="panel" id="panel-activity"></section>
+    <section class="panel" id="panel-integrations"></section>
   </main>
 
   <!-- ===================== Dashboard footer ===================== -->
@@ -230,7 +232,7 @@
     </form>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=5"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=6"></script>
   <script src="{{ url_for('static', filename='js/consent.js') }}?v=1"></script>
 </body>
 </html>
