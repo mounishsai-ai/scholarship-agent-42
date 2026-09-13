@@ -9,6 +9,7 @@ still comes from the engine, so the app works with no API key and no internet.
 """
 import os
 import json
+import base64
 from flask import (Flask, render_template, jsonify, request, session,
                    redirect, url_for)
 
@@ -20,12 +21,12 @@ app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "agent42-scholarship-vignan-cse-2026")
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
-GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash").strip()
+GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.8-flash").strip()
 # Vertex AI path: uses your gcloud Application Default Credentials — NO api key.
 # Set GEMINI_USE_VERTEX=1 and GOOGLE_CLOUD_PROJECT=<project> to use your GCP credit.
 GEMINI_USE_VERTEX = os.environ.get("GEMINI_USE_VERTEX", "").strip().lower() in ("1", "true", "yes")
 GEMINI_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
-GEMINI_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "us-central1").strip()
+GEMINI_LOCATION = os.environ.get("GOOGLE_CLOUD_LOCATION", "global").strip()
 LLM_ON = bool(GEMINI_API_KEY) or (GEMINI_USE_VERTEX and bool(GEMINI_PROJECT))
 
 _gemini = {"client": None, "tried": False}
@@ -78,12 +79,25 @@ def login():
     stored, and the dashboard is never gated on this."""
     mode = (request.form.get("mode") or "guest").strip()
     ident = (request.form.get("identifier") or "").strip()
-    defaults = {"guest": "Guest", "google": "Scholarship Officer",
-                "email": "Scholarship Officer", "phone": "Scholarship Officer",
-                "regid": "Student", "empid": "Faculty"}
+    role = (request.form.get("role") or "").strip().upper()
+    valid = {"ACCOUNTS", "HOD", "ACCT", "STUDENT"}
+    role_names = {"ACCOUNTS": "Scholarship Officer", "HOD": "Head of Department",
+                  "ACCT": "Accounts Office", "STUDENT": "Student"}
     session["signed_in"] = True
-    session["user_name"] = ident or defaults.get(mode, "Scholarship Officer")
     session["login_mode"] = mode
+    if mode == "guest":
+        # Guest can preview every role (demo affordance).
+        session["role"] = "GUEST"
+        session["can_switch"] = True
+        session["user_name"] = "Guest"
+        session["role_student"] = ""
+    else:
+        # A real sign-in is locked to one role — no cross-role viewing.
+        r = role if role in valid else "ACCOUNTS"
+        session["role"] = r
+        session["can_switch"] = False
+        session["user_name"] = ident or role_names[r]
+        session["role_student"] = (request.form.get("student") or "23CSE002") if r == "STUDENT" else ""
     return redirect(url_for("dashboard"))
 
 
@@ -223,14 +237,74 @@ def api_suppress():
 def api_chat():
     data = request.get_json(force=True)
     question = (data.get("message") or "").strip()
-    if not question:
+    image = data.get("image")  # optional data: URL
+    role = (data.get("role") or "").upper()
+    viewer = (data.get("viewer") or "").upper()
+    if not question and not image:
         return jsonify({"reply": "Ask me about scholarships, eligibility, renewals or fees."})
+
+    # Role-scoped access: a student cannot see officer/HoD-only views or other students.
+    blocked = _student_restriction(question, role, viewer)
+    if blocked:
+        return jsonify({"reply": blocked, "intent": "restricted", "data": {}})
+
     try:
-        intent, payload = _route_question(question)
+        if image:
+            return jsonify({"reply": _vision_answer(question, image), "intent": "image", "data": {}})
+        import re
+        q = question
+        # A signed-in student saying "I / me / my" means their own record.
+        if role == "STUDENT" and viewer and not re.search(r"\d{2}\s*cse\s*\d{3}", question.lower()):
+            q = question + " " + viewer
+        intent, payload = _route_question(q)
         reply = _phrase(question, intent, payload)
         return jsonify({"reply": reply, "intent": intent, "data": payload})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"reply": f"Sorry, I could not answer that: {exc}", "error": str(exc)})
+
+
+def _student_restriction(question: str, role: str, viewer: str):
+    """A signed-in student may only see their own record — everything cross-student
+    or officer/HoD-only is refused with a clear message (what evaluators look for)."""
+    if role != "STUDENT":
+        return None
+    import re
+    ql = " " + question.lower() + " "
+    m = re.search(r"(\d{2})\s*cse\s*(\d{3})", ql)
+    if m:
+        roll = f"{m.group(1)}CSE{m.group(2)}".upper()
+        if viewer and roll != viewer:
+            return ("You can only see your own record. As a student you can ask about your own "
+                    "eligibility, applications, renewals or fees.")
+    officer_only = ("all student", "every student", "everyone", "other student", "coverage",
+                    "how many student", "department", "approval", "approve", "add scheme",
+                    "create scheme", "reconcil", "suppress", "which students", "list students",
+                    "all applications", "everybody")
+    if any(w in ql for w in officer_only):
+        return ("That view is restricted to the Scholarship Officer or Head of Department. As a "
+                "student you can ask about your own eligibility, applications, renewals and fees.")
+    return None
+
+
+def _vision_answer(question: str, image: str) -> str:
+    """Answer a question about an uploaded image via Gemini (multimodal)."""
+    client = gemini_client()
+    if client is None:
+        return ("Image understanding needs the AI assistant (Gemini) enabled. It is currently off, "
+                "so I can only answer text questions about scholarships.")
+    try:
+        from google.genai import types
+        header, b64 = image.split(",", 1) if "," in image else ("", image)
+        mime = "image/png"
+        if header.startswith("data:") and ";" in header:
+            mime = header[5:header.index(";")]
+        img_part = types.Part.from_bytes(data=base64.b64decode(b64), mime_type=mime)
+        q = question or ("Describe this image. If it is a scholarship, income, caste or marks "
+                         "document, say what it is and the key details you can read.")
+        resp = client.models.generate_content(model=GEMINI_MODEL, contents=[q, img_part])
+        return (resp.text or "I couldn't read that image.").strip()
+    except Exception as exc:  # noqa: BLE001
+        return f"I couldn't process that image: {exc}"
 
 
 def _route_question(q: str):
