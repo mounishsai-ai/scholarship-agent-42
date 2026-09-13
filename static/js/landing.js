@@ -206,17 +206,36 @@
     window.setTimeout(go, 700);
   }
 
-  // Fake Google account-picker → "signing in" flow (no real OAuth, demo only).
-  function googleBluff(go) {
+  // Fake Google account-picker (no real OAuth). Each account signs in as ONE
+  // role; guest is the only login that can preview every role.
+  function googleBluff() {
     var ov = document.getElementById("google-overlay");
-    if (!ov) { playOverlay("Signing you in…", go); return; }
-    var s1 = ov.querySelector(".g-step-1"), s2 = ov.querySelector(".g-step-2");
-    s1.hidden = false; s2.hidden = true; ov.hidden = false;
-    window.setTimeout(function () {
-      s1.hidden = true; s2.hidden = false;
-      window.setTimeout(go, 1100);
-    }, 1400);
+    if (!ov) return;
+    ov.querySelector(".g-step-1").hidden = false;
+    ov.querySelector(".g-step-2").hidden = true;
+    ov.hidden = false;
   }
+  function postLogin(mode, role, identifier) {
+    var f = document.createElement("form");
+    f.method = "post"; f.action = "/login";
+    [["mode", mode], ["role", role || ""], ["identifier", identifier || ""]].forEach(function (kv) {
+      var i = document.createElement("input"); i.type = "hidden"; i.name = kv[0]; i.value = kv[1]; f.appendChild(i);
+    });
+    document.body.appendChild(f); HTMLFormElement.prototype.submit.call(f);
+  }
+  document.querySelectorAll("#google-overlay .g-account").forEach(function (acc) {
+    acc.addEventListener("click", function () {
+      var ov = document.getElementById("google-overlay");
+      ov.querySelector(".g-step-1").hidden = true;
+      ov.querySelector(".g-step-2").hidden = false;
+      window.setTimeout(function () { postLogin("google", acc.dataset.role, acc.dataset.email); }, 1100);
+    });
+  });
+  document.querySelectorAll("[data-close-google]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var ov = document.getElementById("google-overlay"); if (ov) ov.hidden = true;
+    });
+  });
 
   // Every sign-in path plays a short overlay, then submits — a smooth hand-off.
   // Google mode shows the bluff account-picker; everything else the plain overlay.

@@ -535,11 +535,25 @@
     <div class="g-step g-step-1">
       <div class="g-title">Choose an account</div>
       <div class="g-subtitle">to continue to <b>Agent 42</b></div>
-      <button class="g-account" type="button">
+      <button class="g-account" type="button" data-role="ACCOUNTS" data-email="scholarship@vignan.edu">
         <span class="g-avatar">S</span>
-        <span class="g-acc-text"><b>Scholarship Section</b><span>scholarship@vignan.edu</span></span>
+        <span class="g-acc-text"><b>Scholarship Officer</b><span>scholarship@vignan.edu</span></span>
       </button>
-      <div class="g-another"><span class="g-avatar g-plus">+</span> Use another account</div>
+      <button class="g-account" type="button" data-role="HOD" data-email="hod.cse@vignan.edu">
+        <span class="g-avatar" style="background:#8b5cf6">H</span>
+        <span class="g-acc-text"><b>Head of Department</b><span>hod.cse@vignan.edu</span></span>
+      </button>
+      <button class="g-account" type="button" data-role="ACCT" data-email="accounts@vignan.edu">
+        <span class="g-avatar" style="background:#0ea5e9">A</span>
+        <span class="g-acc-text"><b>Accounts Office</b><span>accounts@vignan.edu</span></span>
+      </button>
+      <button class="g-account" type="button" data-role="STUDENT" data-email="23cse002@vignan.edu">
+        <span class="g-avatar" style="background:#f59e0b">R</span>
+        <span class="g-acc-text"><b>Arjun Rao · Student</b><span>23cse002@vignan.edu</span></span>
+      </button>
+      <div class="g-hint">Each account sees only its own role. To preview <b>all</b> roles in one
+        session, cancel and choose <b>Continue as guest</b>.</div>
+      <button class="g-cancel" type="button" data-close-google>Cancel</button>
     </div>
     <div class="g-step g-step-2" hidden>
       <div class="g-spinner"></div>
