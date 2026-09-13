@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=6" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=7" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=1" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -48,6 +48,11 @@
         <img src="{{ url_for('static', filename='img/badges.png') }}"
              alt="NAAC A+, NIRF, NBA, UGC, ABET accreditation badges"
              class="badge-strip" onerror="this.style.display='none'" />
+      </div>
+      <div class="top-legal">
+        <a href="{{ url_for('privacy') }}">Privacy</a>
+        <a href="{{ url_for('terms') }}">Terms</a>
+        <a href="{{ url_for('cookies') }}">Cookies</a>
       </div>
       <div class="session">
         <button id="theme-toggle" class="icon-btn" title="Toggle dark mode" aria-label="Toggle dark mode">
@@ -183,8 +188,11 @@
   </div>
 
   <!-- ===================== Chat widget (Buji) ===================== -->
-  <button id="chat-toggle" class="chat-toggle" title="Ask the Scholarship Agent" aria-label="Ask the Scholarship Agent">
-    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+  <button id="chat-toggle" class="chat-toggle" title="Ask AURA" aria-label="Ask AURA, the scholarship assistant">
+    <span class="chat-toggle-avatar" aria-hidden="true">
+      <svg viewBox="0 0 40 40" width="26" height="26"><rect x="9" y="15" width="22" height="18" rx="6" fill="#fff"/><circle cx="16.25" cy="23" r="1.9" fill="#12224e"/><circle cx="23.75" cy="23" r="1.9" fill="#12224e"/><path d="M4 12 L20 6 L36 12 L20 18 Z" fill="#fff" opacity=".9"/><circle cx="20" cy="8" r="2.4" fill="#e8930c"/></svg>
+    </span>
+    <span class="chat-toggle-label">Ask AURA</span>
   </button>
   <div id="chat" class="chat hidden">
     <div class="chat-head">
@@ -198,14 +206,15 @@
         </svg>
       </div>
       <div>
-        <div class="chat-name">Scholarship Agent</div>
-        <div class="chat-status">{{ 'Gemini + rules' if chat_llm else 'rule-based · offline-safe' }}</div>
+        <div class="chat-name">AURA</div>
+        <div class="chat-status">{{ 'Scholarship assistant · Gemini' if chat_llm else 'Scholarship assistant · offline' }}</div>
       </div>
       <button id="chat-close" class="chat-close" aria-label="Close chat">×</button>
     </div>
     <div id="chat-log" class="chat-log">
-      <div class="msg bot">Hi! Ask me things like <em>"which scholarships is 23CSE001 eligible for?"</em>,
-        <em>"who is at renewal risk?"</em> or <em>"what is our coverage gap?"</em></div>
+      <div class="msg bot"><span class="tag">AURA</span>Hi, I'm <b>AURA</b>, your scholarship assistant. Ask me things like
+        <em>"which scholarships is 23CSE001 eligible for?"</em>,
+        <em>"who is at renewal risk?"</em> or <em>"what is our coverage gap?"</em> — you can also speak or attach an image.</div>
     </div>
     <div id="chat-attach" class="chat-attach" hidden></div>
     <form id="chat-form" class="chat-form">
@@ -221,7 +230,7 @@
     </form>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=4"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=5"></script>
   <script src="{{ url_for('static', filename='js/consent.js') }}?v=1"></script>
 </body>
 </html>

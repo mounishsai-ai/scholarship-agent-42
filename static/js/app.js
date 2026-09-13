@@ -593,7 +593,7 @@ $("#chat-form").addEventListener("submit", async (e) => {
         ai_consent: (typeof window.aiConsent === "function" ? window.aiConsent() : true)
       })
     });
-    thinking.innerHTML = `<span class="tag">${esc(d.intent || "answer")}</span>${esc(d.reply)}`;
+    thinking.innerHTML = `<span class="tag">AURA</span>${esc(d.reply)}`;
   } catch (err) {
     thinking.textContent = "Error: " + err.message;
   }
