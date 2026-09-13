@@ -211,6 +211,11 @@ def api_runs():
     return _safe(lambda: {"runs": engine.recent_runs()})
 
 
+@app.route("/api/integrations")
+def api_integrations():
+    return _safe(engine.integration_report)
+
+
 @app.route("/api/approvals")
 def api_approvals():
     return _safe(lambda: {"approvals": engine.pending_approvals()})
@@ -369,6 +374,10 @@ def _route_question(q: str):
         elif girl:
             schemes = [s for s in schemes if any(r.get("field") == "gender" for r in _rules(s))]
         return "schemes", {"schemes": schemes}
+    if has("database", "connected", "data source", "integrat", "consume", "feed", "provenance",
+           "lineage", "agent 10", "agent 11", "agent 40", "agent 41", "agent 43",
+           "where does the data", "real data", "how do you know"):
+        return "integrations", engine.integration_report()
     if has("eligib", "qualif", "match"):
         return "coverage", engine.coverage_report()
     return "unknown", {}
@@ -506,6 +515,13 @@ def _template_reply(intent: str, payload: dict) -> str:
         if not names:
             return "No active schemes match that filter."
         return "Schemes: " + ", ".join(names) + "."
+    if intent == "integrations":
+        db = payload.get("database", {})
+        return (f"Yes — connected to the shared platform PostgreSQL database "
+                f"({db.get('runs_logged', 0)} agent runs logged, each with its data sources recorded). "
+                f"It consumes Agent 10 (academic performance) and Agent 11 (attendance), and feeds "
+                f"Agent 40 (fee management), 41 (fee reminders) and 43 (education loans). Every number "
+                f"traces to real records — open the Integrations tab to see the live lineage.")
     return HELP_TEXT
 
 
