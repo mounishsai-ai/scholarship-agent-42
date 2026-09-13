@@ -588,7 +588,10 @@ $("#chat-form").addEventListener("submit", async (e) => {
   try {
     const d = await api("/api/chat", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text, image: img, role: currentRole, viewer: R().student || "" })
+      body: JSON.stringify({
+        message: text, image: img, role: currentRole, viewer: R().student || "",
+        ai_consent: (typeof window.aiConsent === "function" ? window.aiConsent() : true)
+      })
     });
     thinking.innerHTML = `<span class="tag">${esc(d.intent || "answer")}</span>${esc(d.reply)}`;
   } catch (err) {
@@ -618,7 +621,10 @@ function addMsg(text, who) {
   btn.addEventListener("click", () => {
     const next = cur() === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", next);
-    try { localStorage.setItem("agent42-theme", next); } catch (e) {}
+    // Only remember the theme if the Preferences cookie was allowed.
+    if (!window.__consent || window.__consent.preferences !== false) {
+      try { localStorage.setItem("agent42-theme", next); } catch (e) {}
+    }
   });
 })();
 

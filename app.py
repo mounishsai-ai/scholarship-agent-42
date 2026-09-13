@@ -240,6 +240,7 @@ def api_chat():
     image = data.get("image")  # optional data: URL
     role = (data.get("role") or "").upper()
     viewer = (data.get("viewer") or "").upper()
+    ai_ok = data.get("ai_consent", True)  # cookie-consent gate for the AI features
     if not question and not image:
         return jsonify({"reply": "Ask me about scholarships, eligibility, renewals or fees."})
 
@@ -250,6 +251,9 @@ def api_chat():
 
     try:
         if image:
+            if not ai_ok:
+                return jsonify({"reply": "Turn on “AI features” in cookie settings to read images.",
+                                "intent": "restricted", "data": {}})
             return jsonify({"reply": _vision_answer(question, image), "intent": "image", "data": {}})
         import re
         q = question
@@ -257,7 +261,8 @@ def api_chat():
         if role == "STUDENT" and viewer and not re.search(r"\d{2}\s*cse\s*\d{3}", question.lower()):
             q = question + " " + viewer
         intent, payload = _route_question(q)
-        reply = _phrase(question, intent, payload)
+        # If the visitor declined the AI cookie, answer deterministically (no Gemini).
+        reply = _phrase(question, intent, payload) if ai_ok else _template_reply(intent, payload)
         return jsonify({"reply": reply, "intent": intent, "data": payload})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"reply": f"Sorry, I could not answer that: {exc}", "error": str(exc)})
