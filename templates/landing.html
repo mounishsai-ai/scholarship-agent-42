@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=5" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=6" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=1" />
 </head>
 <body>
@@ -284,11 +284,13 @@
 <section class="section section-platform" id="platform">
   <div class="wrap">
     <div class="section-lead" data-reveal>
-      <h2 class="section-title">One agent inside a 72-agent platform.</h2>
+      <h2 class="section-title">How it works with the other 72 agents.</h2>
       <p class="section-body">
-        Agent&nbsp;42 runs standalone today and plugs into the shared academic platform by
-        changing one connection string. It reads from upstream agents and feeds the ones
-        downstream — with provenance recorded on every run.
+        Every team builds one agent, and all of them share a <b>single database</b>. That is the
+        whole trick to integration: our agent never calls anyone else's code. It simply <b>reads the
+        same tables</b> that Agents&nbsp;10 and&nbsp;11 fill in, and <b>writes to the tables</b> that
+        Agents&nbsp;40,&nbsp;41 and&nbsp;43 read. Point every agent at the same database and they work
+        together automatically.
       </p>
     </div>
 
@@ -310,6 +312,33 @@
         <div class="flow-node out">Agent 43 · Education-loan docs</div>
       </div>
     </div>
+
+    <div class="platform-how" data-reveal>
+      <div class="ph-card">
+        <div class="ph-num">1</div>
+        <h4>One shared database, no custom APIs</h4>
+        <p>All 72 agents read and write the same tables. Integration is agents sharing data, not
+          code calling code — so nothing breaks when another team ships their agent.</p>
+      </div>
+      <div class="ph-card">
+        <div class="ph-num">2</div>
+        <h4>We read what Agents 10 &amp; 11 produce</h4>
+        <p>Marks and attendance land in shared tables. Agent&nbsp;42 just reads them. Swap our
+          stub for the real agents and nothing on our side changes.</p>
+      </div>
+      <div class="ph-card">
+        <div class="ph-num">3</div>
+        <h4>We write what Agents 40, 41 &amp; 43 use</h4>
+        <p>Our fee, reminder and loan updates go into tables those agents already watch, so they
+          pick them up on their own.</p>
+      </div>
+    </div>
+
+    <p class="platform-verify" data-reveal>
+      See it for yourself — don't take our word for it. Sign in and open the <b>Integrations</b> tab:
+      it shows the <b>Google Cloud SQL</b> connection with a live server clock that changes each time
+      you press Refresh, the exact shared tables, and their live row counts.
+    </p>
   </div>
 </section>
 

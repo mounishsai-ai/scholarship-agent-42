@@ -542,9 +542,21 @@ loaders.integrations = async () => {
       : `<tr><td colspan="3" class="note">Open Coverage, Renewal or Reconciliation once to generate live lineage.</td></tr>`;
     el.innerHTML = `
       <div class="card">
-        <h2>Connected to the shared platform database</h2>
-        <div class="sub">Live PostgreSQL connection · <b>${db.runs_logged}</b> agent runs logged. These row
-          counts are queried right now — proof the figures are real, not hard-coded.</div>
+        <h2>Connected to the shared Academic Platform database</h2>
+        <div class="int-conn">
+          <span class="pill ok">● CONNECTED</span>
+          <b>${esc(db.provider)}</b>${db.instance ? ` · <code>${esc(db.instance)}</code>` : ""}${db.version ? ` · ${esc(db.version)}` : ""}
+        </div>
+        <div class="sub">Running on the exact schema the competition provided
+          (<code>schema_full.sql</code>): <b>${db.schemas || "—"}</b> schemas · <b>${db.tables || "—"}</b>
+          tables loaded whole — the same database every other team's agent uses.</div>
+        <div class="int-live">
+          <span>Database server time (live): <b id="db-time">${esc(db.server_time || "")}</b></span>
+          <button class="btn small" id="int-refresh">↻ Refresh</button>
+        </div>
+        <div class="sub">That clock is read straight from the database — press <b>Refresh</b> and it
+          moves, because it is queried live, never stored. <b>${db.runs_logged}</b> agent runs are
+          logged. The row counts below are read the same way, right now.</div>
         <div class="tbl-wrap"><table>
           <thead><tr><th>Shared object read</th><th>Live rows</th></tr></thead>
           <tbody>${reads}</tbody></table></div>
@@ -566,6 +578,7 @@ loaders.integrations = async () => {
           <thead><tr><th>Source table</th><th>Rows</th><th>Run</th></tr></thead>
           <tbody>${prov}</tbody></table></div>
       </div>`;
+    const rf = $("#int-refresh"); if (rf) rf.addEventListener("click", () => loaders.integrations());
   } catch (e) { errorCard(el, e); }
 };
 
