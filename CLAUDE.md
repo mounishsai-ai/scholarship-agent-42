@@ -3,31 +3,27 @@
 Project context for any AI assistant working on this repo. Read this first.
 
 ## What this is
-Our entry for **Agentic AI Day 2026** (Vignan University, CSE). The event splits a 72-agent
-academic platform across ~72 teams; **our team owns Agent 42, the Scholarship Agent.** All agents
-share one PostgreSQL database (the platform schema in `schema/schema_full.sql`). Our app is a
-**standalone website that runs on that shared schema**, so it demos alone today and plugs into the
+Agent 42, the Scholarship Agent, from a 72-agent academic platform (Vignan University, CSE). All
+agents share one PostgreSQL database (the platform schema in `schema/schema_full.sql`). Our app is a
+**standalone website that runs on that shared schema**, so it works alone today and plugs into the
 full platform later by changing one connection string.
 
-Deadline: **2026-09-12, 2:00 PM.** Team of two.
-
-## Who judges it (design implications — important)
-Judges are **regular faculty, not developers.** First screening is largely on the **frontend**:
-it must look **stunning and polished**, because that is what earns the first-round pass. So visual
-quality is a first-class requirement, not a nice-to-have — but never at the cost of the working
-system underneath. It is also an *agentic AI* event, so the "agent" behaviour (reasoning shown,
-audit trail, risk flags, human approval) is where the technical points are.
+## Design priority
+The UI should look genuinely premium and polished, and the "agent" behaviour (reasoning shown,
+audit trail, risk flags, human approval) is where the technical depth lives. Visual quality matters,
+but never at the cost of the working system underneath.
 
 ## Stack
-- **Postgres** on Supabase (free tier). Schema self-creates `pgcrypto` + `pg_trgm`; uses `real[]`
-  not pgvector, so it loads on stock Postgres 14+.
+- **PostgreSQL** — Cloud SQL in production, a local Postgres for development. Schema self-creates
+  `pgcrypto` + `pg_trgm`; uses `real[]` not pgvector, so it loads on stock Postgres 14+.
 - **Flask** (`app.py`) serves the dashboard and a small JSON API.
 - **`scholarship_engine.py`** — deterministic reasoning; every number comes from SQL/Python, never
   the LLM.
-- **Gemini** (Google AI Studio key or Vertex via gcloud) is OPTIONAL, used only to phrase chat
-  answers. The app runs fully offline without it.
-- Frontend: plain HTML/CSS/JS in `templates/` + `static/` (no build step). Design language echoes
-  the event's "Buji" bot: light-blue sky, white cards, blue + gold accents.
+- **Gemini** via Vertex AI (`gemini-2.5-flash`, using gcloud/ADC — no API key) phrases chat answers
+  over the full data context. There is a deterministic offline fallback, so the app works with no
+  LLM at all.
+- Frontend: plain HTML/CSS/JS in `templates/` + `static/` (no build step). Light-blue sky, white
+  cards, blue + gold accents; a friendly "Buji" mascot.
 
 ## Architecture (top to bottom)
 Browser (dashboard + chat) → Flask `app.py` → `scholarship_engine.py` → `db.py` → Postgres.
@@ -53,50 +49,44 @@ reminders (41, suppression), and education-loan docs (43). Do not fake-build 10/
 
 20 seeded students (`23CSE001`–`23CSE020`); scale by copying the last seed block.
 
-## Frontend direction (v2 — premium + animated)
-Faculty judges screen on visual impact, so the front door must look genuinely premium, not a plain
-dashboard.
-- **Do NOT use the `frontend-design` skill** — it pushes a minimal look the team finds too plain.
-- **Reference (not strict rules):** the `taste-skill` install (`~/.claude/skills/taste-skill`,
-  especially `skills/taste-skill/SKILL.md` and `soft-skill`), latest Vercel-site aesthetics,
-  emilkowalski animation patterns, GSAP, and Lenis smooth scroll.
-- **Architecture:** a stunning animated **landing page + "Sign in with Google" screen** (taste-skill
-  territory) that leads into the **functional dashboard** (kept clean; taste-skill explicitly is not
-  for dashboards/data-tables). Two surfaces, one visual language.
-- **Stack stays Flask + vanilla JS** (no React/Tailwind build — one day left, working app in hand).
-  Use **GSAP + Lenis vendored locally** in `static/vendor/` for offline reliability. Take taste-skill
-  React snippets as inspiration, port to vanilla.
-- **Auth:** add a "Sign in with Google" screen. Real Google OAuth if time allows; otherwise a clean
-  mock session (a button that sets a session and enters the dashboard) — visual is what matters for
-  screening. Also offer email/guest entry. Keep the dashboard reachable for the live demo.
-- **Vignan footer:** branded footer on the landing (Vignan University, CSE, Agentic AI Day 2026,
-  accreditation badges, team names, GitHub link).
+## Frontend direction (premium + animated)
+The front door should look genuinely premium, not a plain dashboard.
+- Reference (not strict rules): the `taste-skill` install, current Vercel-site aesthetics, GSAP,
+  and Lenis smooth scroll.
+- Architecture: an animated **landing + sign-in** that leads into the **functional dashboard**
+  (kept clean). Two surfaces, one visual language.
+- Stack stays Flask + vanilla JS. **GSAP + Lenis vendored locally** in `static/vendor/` for offline
+  reliability.
+- **Auth:** a sign-in screen with Google, email, phone, ID and guest options — currently a
+  mock/session sign-in; the dashboard is reachable without login for the live demo. Real OAuth is
+  optional.
+- **Vignan footer:** branded footer (Vignan University, CSE, Agentic AI Day 2026, accreditation
+  badges, team names, GitHub link).
 
 ## Design guardrails
 - Signature: the **coverage-gap meter** (eligible vs covered) + a graduation-cap agent mascot.
 - Palette: indigo `#12224e`, blue `#2f6df6`, gold `#e8930c`; success/amber/danger for status.
   One accent locked across the page; tint shadows to the background hue.
-- Type: Space Grotesk / Sora (display), Inter (body), IBM Plex Mono (numbers). Self-host or
-  `font-display: swap` with a real fallback stack.
+- Type: Space Grotesk / Sora (display), Inter (body), IBM Plex Mono (numbers), with a real fallback
+  stack.
 - Motion must be motivated (hierarchy, reveal, feedback) — not decoration. Honour
-  `prefers-reduced-motion`. Keep it responsive and keyboard-focusable.
-- Real logos/badges (Vignan, NAAC/NIRF/NBA/UGC/ABET) drop into `static/img/` — see its README.
+  `prefers-reduced-motion`. Keep it responsive and keyboard-focusable. Dark mode via `data-theme`.
+- Real logos/badges live in `static/img/` (`vignan-logo.png`, `badges.png`).
 
 ## Git history
-Commit granularly and often (many small, real commits) so the contribution graph is active and
-shows both teammates. We do not fabricate empty/meaningless commits to hit a number.
+Commit granularly and often (many small, real commits), attributing both teammates. Do not fabricate
+empty/meaningless commits.
 
-## Honesty notes to keep in the pitch
+## Honesty notes
 - Agents 10/11 are stubbed upstream inputs owned by other teams.
 - `people.person.social_category` is used ONLY as a lawful statutory scholarship rule, never as an
   ML feature (the schema forbids that).
 
 ## Running it
-Local (already verified against Postgres 16 in Docker):
-`DATABASE_URL=postgresql://postgres:pg@localhost:55432/platform` with the throwaway `pg42`
-container. For the real thing use Supabase — see `README.md`. Load `schema/schema_full.sql` then
-`seed.sql`, set `.env`, `python app.py`, open `http://localhost:5000`.
+Copy `.env.example` to `.env`, set `DATABASE_URL` (the app reads it via dotenv), `AGENT_USER_ID`,
+and — for Gemini — `GEMINI_USE_VERTEX=1` + `GOOGLE_CLOUD_PROJECT` (or a `GEMINI_API_KEY`). Then
+`python app.py` and open `http://localhost:5000`. Load `schema/schema_full.sql` then `seed.sql` into
+the database first. `.env` is git-ignored and excluded from the Cloud Run build.
 
 ## Repo
-Private: https://github.com/mounishsai-ai/scholarship-agent-42 . Commits co-author Ranjith Kumar
-and Claude. Team: Mounish Sai, Ch. V. K. Ranjith Kumar.
+https://github.com/mounishsai-ai/scholarship-agent-42 . Team: Mounish Sai, Ch. V. K. Ranjith Kumar.
