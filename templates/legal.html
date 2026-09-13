@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% if page == 'privacy' %}Privacy Policy{% elif page == 'terms' %}Terms & Conditions{% else %}Cookie Policy{% endif %} · Agent 42</title>
+  <link rel="icon" href="{{ url_for('static', filename='img/vignan-logo.png') }}" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+  <style>
+    :root { --indigo:#12224e; --blue:#2f6df6; --ink:#1f2937; --muted:#5b6478; --line:#e3e9f4; --bg:#f6f9ff; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:"Inter",system-ui,Arial,sans-serif; color:var(--ink); background:var(--bg); }
+    .lbar { display:flex; align-items:center; justify-content:space-between; gap:16px; padding:14px 24px;
+      background:#fff; border-bottom:1px solid var(--line); position:sticky; top:0; }
+    .lbrand { display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--indigo); font-weight:800; font-family:"Sora",sans-serif; }
+    .lbrand img { height:34px; }
+    .lnav a { color:var(--muted); text-decoration:none; font-size:14px; font-weight:600; margin-left:16px; }
+    .lnav a:hover, .lnav a.on { color:var(--blue); }
+    .wrap { max-width:820px; margin:0 auto; padding:40px 24px 80px; }
+    h1 { font-family:"Sora",sans-serif; color:var(--indigo); font-size:32px; margin:0 0 6px; }
+    .updated { color:var(--muted); font-size:13px; margin-bottom:28px; }
+    h2 { font-family:"Sora",sans-serif; color:var(--indigo); font-size:19px; margin:30px 0 8px; }
+    p, li { line-height:1.7; font-size:15px; color:#374151; }
+    ul { padding-left:20px; }
+    .note { background:#eef4ff; border:1px solid #d6e4ff; border-radius:12px; padding:14px 16px; font-size:14px; margin:18px 0; }
+    a { color:var(--blue); }
+    footer { text-align:center; color:var(--muted); font-size:13px; padding:24px; border-top:1px solid var(--line); background:#fff; }
+  </style>
+</head>
+<body>
+  <header class="lbar">
+    <a class="lbrand" href="{{ url_for('index') }}">
+      <img src="{{ url_for('static', filename='img/vignan-logo.png') }}" alt="Vignan" onerror="this.style.display='none'" />
+      Agent&nbsp;42
+    </a>
+    <nav class="lnav">
+      <a href="{{ url_for('privacy') }}" class="{{ 'on' if page=='privacy' }}">Privacy</a>
+      <a href="{{ url_for('terms') }}" class="{{ 'on' if page=='terms' }}">Terms</a>
+      <a href="{{ url_for('cookies') }}" class="{{ 'on' if page=='cookies' }}">Cookies</a>
+      <a href="{{ url_for('index') }}">Home</a>
+    </nav>
+  </header>
+
+  <main class="wrap">
+  {% if page == 'privacy' %}
+    <h1>Privacy Policy</h1>
+    <div class="updated">Vignan University · CSE — Scholarship Agent (Agent 42). Last updated September 2026.</div>
+    <p>This service helps the university's scholarship section match students to the scholarships they
+       are eligible for, track applications, monitor renewals, and reconcile disbursements against
+       fees. This policy explains what data it uses and how.</p>
+
+    <h2>Who is responsible</h2>
+    <p>The data controller is <b>Vignan University (Computer Science &amp; Engineering)</b>. Questions
+       about this policy or your data can be sent to <a href="mailto:scholarship@vignan.edu">scholarship@vignan.edu</a>.</p>
+
+    <h2>What data we use</h2>
+    <ul>
+      <li>Student master data: name, roll number, programme, year, social category and family income
+          (used only for statutory scholarship eligibility, never as a machine-learning feature).</li>
+      <li>Academic and attendance records (CGPA, backlogs, attendance percentage).</li>
+      <li>Scholarship scheme catalogues, application status, sanctions and disbursements.</li>
+      <li>Fee ledger entries and reminder status.</li>
+    </ul>
+    <p>This data originates in the university's own systems (ERP, examinations, attendance, finance).
+       The service reads from that institutional database; it does not collect data from the public.</p>
+
+    <h2>How we use it</h2>
+    <p>Solely to operate the scholarship workflow described above. Every eligibility decision and
+       every metric is computed deterministically from these records, and the reasoning is shown. The
+       agent's outputs are advisory: actions that affect a student (notifications, reminder
+       suppression) require a human approval before they take effect.</p>
+
+    <div class="note"><b>AI assistant.</b> The optional chat assistant sends your question and the
+      relevant scholarship/eligibility figures to <b>Google Cloud (Vertex AI, Gemini)</b> to phrase a
+      reply. The underlying numbers are always computed by this service, not by the model. If the AI
+      is disabled, the assistant answers from built-in templates and no data leaves the service.</div>
+
+    <h2>Cookies &amp; local storage</h2>
+    <p>We use a single sign-in session cookie and store small preferences (theme, cookie consent) in
+       your browser. See the <a href="{{ url_for('cookies') }}">Cookie Policy</a>. There is no
+       third-party advertising or cross-site tracking.</p>
+
+    <h2>Retention &amp; your rights</h2>
+    <p>Records are retained per the university's academic and financial record-keeping policies. As a
+       student or staff member you may request access to, or correction of, your data through the
+       scholarship section.</p>
+
+  {% elif page == 'terms' %}
+    <h1>Terms &amp; Conditions</h1>
+    <div class="updated">Vignan University · CSE — Scholarship Agent (Agent 42). Last updated September 2026.</div>
+    <p>By using this service you agree to these terms. It is an institutional tool for authorised
+       staff and students of Vignan University.</p>
+
+    <h2>Authorised use</h2>
+    <p>Access is limited to authorised members of the university. Do not access records you are not
+       entitled to, and do not attempt to circumvent the role-based access controls.</p>
+
+    <h2>Nature of the service</h2>
+    <p>The service assists a human-run scholarship process. Its eligibility matches, risk flags and
+       recommendations are <b>advisory</b>. Sanctioning a scholarship, sending a notification or
+       suppressing a fee reminder requires a human decision. The university remains responsible for
+       all final decisions.</p>
+
+    <h2>Accuracy</h2>
+    <p>Outputs depend on the accuracy of the underlying institutional data. While every figure is
+       computed transparently and traceably, the service is provided on an "as is" basis during this
+       pilot, without warranties of uninterrupted or error-free operation.</p>
+
+    <h2>Acceptable use</h2>
+    <ul>
+      <li>Use the service only for legitimate scholarship administration.</li>
+      <li>Do not export or share personal data beyond what your role permits.</li>
+      <li>Do not misuse the AI assistant to attempt to extract data outside your access.</li>
+    </ul>
+
+    <h2>Intellectual property &amp; liability</h2>
+    <p>The software and its content belong to the project team and the university. To the extent
+       permitted by law, liability for indirect or consequential loss arising from use of this pilot
+       service is excluded. These terms are governed by the laws of India.</p>
+
+  {% else %}
+    <h1>Cookie Policy</h1>
+    <div class="updated">Vignan University · CSE — Scholarship Agent (Agent 42). Last updated September 2026.</div>
+    <p>This service uses the minimum browser storage needed to work. It does not use advertising or
+       cross-site tracking cookies.</p>
+
+    <h2>What we store</h2>
+    <ul>
+      <li><b>Session cookie (essential).</b> Keeps you signed in as you move between pages. It is
+          removed when you sign out or the session ends.</li>
+      <li><b>Theme preference (local storage).</b> Remembers light or dark mode on your device.</li>
+      <li><b>Cookie consent (local storage).</b> Remembers that you dismissed the cookie notice.</li>
+    </ul>
+    <p>These stay on your device or in the session and are never sold or shared. No third-party
+       cookies are set.</p>
+
+    <h2>Managing them</h2>
+    <p>You can clear cookies and local storage at any time from your browser settings. Clearing the
+       session cookie will sign you out; clearing preferences resets the theme and the cookie notice.</p>
+
+    <p>For how we handle personal data, see the <a href="{{ url_for('privacy') }}">Privacy Policy</a>.</p>
+  {% endif %}
+  </main>
+
+  <footer>© 2026 Vignan University · CSE — Agent 42, the Scholarship Agent.</footer>
+</body>
+</html>

@@ -94,6 +94,24 @@ def logout():
 
 
 # --------------------------------------------------------------------------
+# Legal pages
+# --------------------------------------------------------------------------
+@app.route("/privacy")
+def privacy():
+    return render_template("legal.html", page="privacy")
+
+
+@app.route("/terms")
+def terms():
+    return render_template("legal.html", page="terms")
+
+
+@app.route("/cookies")
+def cookies():
+    return render_template("legal.html", page="cookies")
+
+
+# --------------------------------------------------------------------------
 # API - each route calls exactly one engine function
 # --------------------------------------------------------------------------
 @app.route("/api/health")
