@@ -52,7 +52,7 @@
     countUp(el, val);
   }
   function countUp(el, target) {
-    var start = 0, dur = 1350, t0 = null;
+    var start = 0, dur = 900, t0 = null;
     function step(ts) {
       if (t0 === null) t0 = ts;
       var p = Math.min((ts - t0) / dur, 1);
@@ -130,7 +130,7 @@
       return !el.closest("#hero");
     }).forEach(function (el) {
       gsap.to(el, {
-        opacity: 1, y: 0, duration: 1.2, ease: "power3.out",
+        opacity: 1, y: 0, duration: 0.8, ease: "power3.out",
         scrollTrigger: { trigger: el, start: "top 86%", once: true }
       });
     });
@@ -139,8 +139,8 @@
     var heroBits = gsap.utils.toArray("#hero [data-reveal]");
     gsap.set(heroBits, { opacity: 0, y: 26 });
     gsap.to(heroBits, {
-      opacity: 1, y: 0, duration: 1.35, ease: "power3.out",
-      stagger: 0.135, delay: 0.22
+      opacity: 1, y: 0, duration: 0.9, ease: "power3.out",
+      stagger: 0.09, delay: 0.15
     });
 
     ScrollTrigger.refresh();
