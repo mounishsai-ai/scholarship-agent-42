@@ -172,6 +172,7 @@ let _activeTabName = "coverage";
 // "swipe between tabs" feel, keyboard/click/touch all route through here.
 function switchTab(name) {
   if (!name || name === _activeTabName) return;
+  const keepY = window.scrollY;   // never yank the viewport to the top on switch
   const from = TAB_ORDER.indexOf(_activeTabName), to = TAB_ORDER.indexOf(name);
   const dir = to >= from ? "right" : "left";
   $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
@@ -182,7 +183,10 @@ function switchTab(name) {
   panel.dataset.dir = dir;
   replay(panel);
   _activeTabName = name;
-  if (loaders[name]) loaders[name]();
+  const keep = () => window.scrollTo(0, keepY);
+  requestAnimationFrame(keep);
+  const p = loaders[name] ? loaders[name]() : null;
+  if (p && p.then) p.then(() => requestAnimationFrame(keep));
 }
 $$(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 

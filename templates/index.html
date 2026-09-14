@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=16" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=17" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -237,9 +237,12 @@
           <!-- head -->
           <rect x="24" y="22" width="44" height="34" rx="14" fill="#3b74f7"/>
           <rect x="24" y="22" width="44" height="34" rx="14" fill="url(#clG)"/>
-          <rect x="29" y="30" width="34" height="18" rx="9" fill="#0d1a38"/>
-          <circle class="cl-eye" cx="39" cy="39" r="3.7" fill="#7ccbff"/>
-          <circle class="cl-eye" cx="53" cy="39" r="3.7" fill="#7ccbff"/>
+          <rect x="28" y="29" width="36" height="20" rx="10" fill="#0d1a38"/>
+          <circle class="cl-eye" cx="39" cy="37" r="3.9" fill="#7ccbff"/>
+          <circle class="cl-eye" cx="53" cy="37" r="3.9" fill="#7ccbff"/>
+          <circle cx="40.4" cy="35.6" r="1.1" fill="#eaf7ff"/>
+          <circle cx="54.4" cy="35.6" r="1.1" fill="#eaf7ff"/>
+          <path class="cl-smile" d="M40 43 q6 5 12 0" stroke="#7ccbff" stroke-width="2.4" fill="none" stroke-linecap="round"/>
           <!-- body -->
           <rect x="27" y="58" width="38" height="42" rx="14" fill="#2f6df6"/>
           <rect x="27" y="58" width="38" height="42" rx="14" fill="url(#clG)"/>
@@ -295,7 +298,7 @@
     </form>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=12"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=13"></script>
   <script src="{{ url_for('static', filename='js/consent.js') }}?v=2"></script>
 </body>
 </html>
