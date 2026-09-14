@@ -114,6 +114,7 @@ function applyRole() {
   loadHero();
   const name = active.dataset.tab;
   if (typeof _activeTabName !== "undefined") _activeTabName = name;
+  if (window.__updateSecNav) window.__updateSecNav();
   replay($("#panel-" + name));
   if (loaders[name]) loaders[name]();
 }
@@ -183,6 +184,7 @@ function switchTab(name) {
   panel.dataset.dir = dir;
   replay(panel);
   _activeTabName = name;
+  if (window.__updateSecNav) window.__updateSecNav();
   const keep = () => window.scrollTo(0, keepY);
   requestAnimationFrame(keep);
   const p = loaders[name] ? loaders[name]() : null;
@@ -911,6 +913,47 @@ applyRole();
   const src = v.querySelector("source");
   if (src) { const t = src.getAttribute("src"); src.setAttribute("src", t); v.load(); }
   const p = v.play(); if (p && p.catch) p.catch(() => {});
+})();
+
+// ------------------------------------------------------------------ Section nav: arrows, keys, mouse-drag, hint
+(function () {
+  const visible = () => $$(".tab").filter(t => !t.hidden).map(t => t.dataset.tab);
+  function stepSection(delta) {
+    const vis = visible(); const i = vis.indexOf(_activeTabName); const j = i + delta;
+    if (j >= 0 && j < vis.length) { switchTab(vis[j]); hideHint(); }
+  }
+  const prev = $("#sec-prev"), next = $("#sec-next"), hint = $("#swipe-hint");
+  if (prev) prev.addEventListener("click", () => stepSection(-1));
+  if (next) next.addEventListener("click", () => stepSection(1));
+  window.__updateSecNav = function () {
+    const vis = visible(); const i = vis.indexOf(_activeTabName);
+    if (prev) prev.classList.toggle("at-end", i <= 0);
+    if (next) next.classList.toggle("at-end", i >= vis.length - 1);
+  };
+  window.__updateSecNav();
+  document.addEventListener("keydown", (e) => {
+    if (e.target.closest("input,textarea,select")) return;
+    if (e.key === "ArrowRight") stepSection(1);
+    else if (e.key === "ArrowLeft") stepSection(-1);
+  });
+  // Mouse drag across the panels (touch swipe is handled separately).
+  const area = $(".panels"); let x0 = null, y0 = null, dragging = false;
+  if (area) {
+    area.addEventListener("pointerdown", (e) => {
+      if (e.pointerType !== "mouse" || e.button !== 0) return;
+      if (e.target.closest("button,a,input,select,textarea,label,.why-btn,.cov-bar")) return;
+      x0 = e.clientX; y0 = e.clientY; dragging = true;
+    });
+    window.addEventListener("pointerup", (e) => {
+      if (!dragging) return; dragging = false;
+      const dx = e.clientX - x0, dy = e.clientY - y0;
+      if (Math.abs(dx) > 90 && Math.abs(dx) > Math.abs(dy) * 1.5) stepSection(dx < 0 ? 1 : -1);
+      x0 = y0 = null;
+    });
+  }
+  let hintTimer = setTimeout(hideHint, 7500);
+  function hideHint() { if (hint) hint.classList.add("hide"); clearTimeout(hintTimer); }
+  window.hideHint = hideHint;
 })();
 
 // ------------------------------------------------------------------ AURA bot: "Ask me!" bubble
