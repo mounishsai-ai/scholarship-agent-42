@@ -68,7 +68,7 @@ a { color: inherit; }
   font-family: var(--font-alt); font-size: 11px; font-weight: 700; color: var(--navy);
   border: 1px solid #cfe0ff; background: #f0f6ff; border-radius: 999px; padding: 4px 10px;
 }
-.badge-strip { height: 50px; }
+.badge-strip { height: 65px; }
 .session { display: flex; align-items: center; gap: 12px; }
 .session-chip {
   display: inline-flex; align-items: center; gap: 7px;
@@ -113,7 +113,7 @@ a { color: inherit; }
 .dash-hero {
   position: relative; overflow: hidden;
   margin: 0; isolation: isolate;
-  min-height: calc(100vh - 104px);   /* fill the screen with the drone campus */
+  min-height: calc(100vh - 122px);   /* fill the screen with the drone campus (below header + status bar) */
   display: flex; flex-direction: column;
   border-bottom: 1px solid rgba(255,255,255,.14);
   perspective: 1200px;
@@ -138,8 +138,7 @@ a { color: inherit; }
 .dh-veil {
   position: absolute; inset: 0; z-index: -2;
   background:
-    linear-gradient(100deg, rgba(5,11,30,.90) 0%, rgba(7,15,38,.72) 34%, rgba(9,19,48,.34) 62%, rgba(9,19,48,.10) 100%),
-    radial-gradient(1100px 460px at 78% -12%, rgba(47,109,246,.36), transparent 60%),
+    linear-gradient(100deg, rgba(5,11,30,.90) 0%, rgba(7,15,38,.70) 34%, rgba(9,19,48,.30) 62%, rgba(9,19,48,.08) 100%),
     linear-gradient(180deg, rgba(5,11,30,.30) 0%, transparent 22%, transparent 68%, rgba(5,11,30,.42) 100%);
 }
 .dh-fade {
@@ -147,7 +146,8 @@ a { color: inherit; }
   background: linear-gradient(180deg, transparent, var(--bg));
   pointer-events: none;
 }
-.dh-orbs { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+.dh-orbs { display: none; }  /* colored glow blobs removed for a clean fade-to-black */
+.dh-orbs-off { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
 .dh-orbs span { position: absolute; border-radius: 50%; filter: blur(50px); opacity: .5; }
 .dh-orbs span:nth-child(1){ width: 320px; height: 320px; left: -70px; top: -90px; background: #2f6df6; }
 .dh-orbs span:nth-child(2){ width: 260px; height: 260px; right: 4%; top: 34%; background: #e8930c; opacity:.28; }
@@ -789,21 +789,22 @@ code { font-family: var(--font-mono); font-size: 12px; background: rgba(47,109,2
 .int-live b { font-family: var(--font-mono); color: var(--indigo); }
 
 /* ---------- Always-visible platform status bar ---------- */
-/* Liquid-glass status bar floating over the drone hero */
+/* Full-width platform status bar — glass-morphism style, same position as before */
 .platform-bar {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  margin: 2px 0 18px; padding: 10px 16px; font-size: 13px; color: #e7eefc;
-  background: rgba(255, 255, 255, .08);
-  border: 1px solid rgba(255, 255, 255, .18); border-radius: 14px;
-  -webkit-backdrop-filter: blur(18px) saturate(160%); backdrop-filter: blur(18px) saturate(160%);
-  box-shadow: 0 10px 30px rgba(4, 10, 30, .25), inset 0 1px 0 rgba(255, 255, 255, .22);
+  padding: 10px clamp(16px, 4vw, 32px); font-size: 13px; color: var(--ink);
+  background: rgba(255, 255, 255, .55);
+  -webkit-backdrop-filter: blur(16px) saturate(160%); backdrop-filter: blur(16px) saturate(160%);
+  border-bottom: 1px solid rgba(255, 255, 255, .6);
+  box-shadow: 0 4px 18px -12px rgba(18, 34, 78, .4);
 }
 .pb-item { display: inline-flex; align-items: center; gap: 6px; }
-.pb-item b { color: #ffffff; }
-.pb-sep { color: #cdd9f4; opacity: .55; }
-.pb-dot { width: 8px; height: 8px; border-radius: 50%; background: #38e08a; box-shadow: 0 0 0 3px rgba(56,224,138,.22); animation: pbpulse 2s ease-in-out infinite; }
-@keyframes pbpulse { 0%,100% { box-shadow: 0 0 0 3px rgba(56,224,138,.22); } 50% { box-shadow: 0 0 0 6px rgba(56,224,138,.05); } }
-.pb-link { margin-left: auto; color: #bcd6ff; font-weight: 600; text-decoration: none; white-space: nowrap; }
-.pb-link:hover { color: #fff; text-decoration: underline; }
+.pb-item b { color: var(--indigo); }
+.pb-sep { color: var(--muted); opacity: .5; }
+.pb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(18,161,80,.18); animation: pbpulse 2s ease-in-out infinite; }
+@keyframes pbpulse { 0%,100% { box-shadow: 0 0 0 3px rgba(18,161,80,.18); } 50% { box-shadow: 0 0 0 5px rgba(18,161,80,.06); } }
+.pb-link { margin-left: auto; color: var(--blue); font-weight: 600; text-decoration: none; white-space: nowrap; }
+.pb-link:hover { text-decoration: underline; }
+:root[data-theme="dark"] .platform-bar { background: rgba(21, 30, 51, .55); border-bottom-color: rgba(255,255,255,.08); }
 @media (prefers-reduced-motion: reduce) { .pb-dot { animation: none; } }
 @media (max-width: 720px) { .pb-sep { display: none; } .platform-bar { font-size: 12px; } .pb-link { margin-left: 0; } }
