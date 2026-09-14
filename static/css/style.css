@@ -292,7 +292,9 @@ a { color: inherit; }
 .tab.active { color: var(--blue-dark); background: #fff; box-shadow: 0 -2px 0 var(--blue) inset, var(--shadow); }
 
 /* ---------- Panels ---------- */
-.panels { padding: 0 clamp(16px, 4vw, 32px) 60px; max-width: 1240px; margin: 0 auto; width: 100%; }
+/* min-height keeps the document tall while a panel briefly shows its loader, so
+   switching tabs never collapses the page height and snaps you back to the top. */
+.panels { padding: 0 clamp(16px, 4vw, 32px) 60px; max-width: 1240px; margin: 0 auto; width: 100%; min-height: 80vh; }
 .panel { display: none; }
 .panel.active { display: block; }
 .panel.anim { animation: panelIn .34s cubic-bezier(.16, 1, .3, 1); }
