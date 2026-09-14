@@ -569,12 +569,23 @@ loaders.activity = async () => {
     const runs = await api("/api/runs");
     const flags = await api("/api/flags");
     const appr = await api("/api/approvals");
-    const runRows = runs.runs.map(r => `<tr>
-        <td><span class="pill status">${esc(r.trigger_type)}</span></td>
-        <td>${esc(r.request_text || "")}</td>
-        <td>${esc(r.status)}</td>
-        <td>${r.input_sources} sources → ${r.outputs} outputs</td>
-        <td class="note">${esc((r.started_at || "").replace("T", " ").slice(0, 19))}</td></tr>`).join("");
+    const gear = `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>`;
+    const clock = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>`;
+    const runItems = runs.runs.map((r, i) => {
+      const when = (r.started_at || "").replace("T", " ").slice(0, 19) || "just now";
+      return `<div class="tl-item ${i % 2 ? "right" : "left"}">
+        <div class="tl-node">${gear}</div>
+        <div class="tl-card">
+          <div class="tl-head"><span class="tl-kind">${esc(r.trigger_type || "RUN")}</span>
+            <span class="pill status">${esc(r.status || "LOGGED")}</span></div>
+          <div class="tl-grid">
+            <div><span>Request</span><b>${esc(r.request_text || "Scheduled agent pass")}</b></div>
+            <div><span>Provenance</span><b>${r.input_sources} source(s) → ${r.outputs} output(s)</b></div>
+          </div>
+          <div class="tl-foot">${clock}<span>${esc(when)}</span></div>
+        </div>
+      </div>`;
+    }).join("") || `<div class="note" style="padding:8px">No runs yet — open Coverage or Renewal Risk to generate the trail.</div>`;
     const flagRows = flags.flags.map(f => `<tr>
         <td><span class="pill loss">${esc(f.severity)}</span></td>
         <td>${esc(f.roll_no || "")} ${esc(f.full_name || "")}</td>
@@ -594,12 +605,15 @@ loaders.activity = async () => {
         <div class="tbl-wrap"><table>
           <thead><tr><th>Severity</th><th>Student</th><th>Concern</th><th>Suggested first action</th></tr></thead>
           <tbody>${flagRows}</tbody></table></div></div>
-      <div class="card"><h2>Recent agent runs (audit trail)</h2>
-        <div class="sub">Every action this agent takes is logged with its inputs and outputs — the
-          evidence trail an accreditation audit walks back through.</div>
-        <div class="tbl-wrap"><table>
-          <thead><tr><th>Trigger</th><th>Request</th><th>Status</th><th>Provenance</th><th>When</th></tr></thead>
-          <tbody>${runRows}</tbody></table></div></div>`;
+      <div class="card">
+        <div class="tl-header">
+          <div><h2>Audit trail — every agent run, logged</h2>
+            <div class="sub">Each action this agent takes is recorded with its inputs and outputs — the
+              evidence trail an accreditation audit walks back through.</div></div>
+          <span class="tl-count">${runs.runs.length} record(s) found</span>
+        </div>
+        <div class="timeline">${runItems}</div>
+      </div>`;
 
     $$("[data-approve]", el).forEach(b => b.addEventListener("click", () => decide(b, "APPROVE")));
     $$("[data-reject]", el).forEach(b => b.addEventListener("click", () => decide(b, "REJECT")));
@@ -625,7 +639,30 @@ loaders.integrations = async () => {
           <td>${p.record_count == null ? "—" : p.record_count}</td>
           <td class="note">${esc(p.request_text || "")}</td></tr>`).join("")
       : `<tr><td colspan="3" class="note">Open Coverage, Renewal or Reconciliation once to generate live lineage.</td></tr>`;
-    el.innerHTML = `
+    const orbit = `
+      <div class="card orbit-card">
+        <div class="orbit-copy">
+          <h2>One database, 72 agents — how Agent 42 is wired in</h2>
+          <div class="sub">No custom APIs. Agent 42 <b>reads</b> the shared tables Agents 10 &amp; 11 fill,
+            and <b>writes</b> the tables Agents 40, 41 &amp; 43 read. Point every agent at the same
+            database and they integrate automatically.</div>
+          <div class="orbit-legend">
+            <span class="ol in"><i></i>Consumes — reads from</span>
+            <span class="ol out"><i></i>Feeds — writes to</span>
+          </div>
+        </div>
+        <div class="orbit" role="img" aria-label="Agent 42 consumes Agents 10 and 11 and feeds Agents 40, 41 and 43">
+          <div class="orbit-ring r1"></div>
+          <div class="orbit-ring r2"></div>
+          <div class="orbit-core"><span class="oc-num">42</span><span class="oc-lbl">Scholarship</span></div>
+          <div class="orbit-pill in" style="--a:235deg"><b>Agent 10</b><span>Academic</span></div>
+          <div class="orbit-pill in" style="--a:290deg"><b>Agent 11</b><span>Attendance</span></div>
+          <div class="orbit-pill out" style="--a:55deg"><b>Agent 40</b><span>Fee mgmt</span></div>
+          <div class="orbit-pill out" style="--a:90deg"><b>Agent 41</b><span>Reminders</span></div>
+          <div class="orbit-pill out" style="--a:125deg"><b>Agent 43</b><span>Edu loans</span></div>
+        </div>
+      </div>`;
+    el.innerHTML = orbit + `
       <div class="card">
         <h2>Connected to the shared Academic Platform database</h2>
         <div class="int-conn">
