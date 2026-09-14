@@ -111,9 +111,56 @@ function applyRole() {
     $("#panel-" + active.dataset.tab).classList.add("active");
   }
   loadKpis();
+  loadHero();
   const name = active.dataset.tab;
   replay($("#panel-" + name));
   if (loaders[name]) loaders[name]();
+}
+
+// ------------------------------------------------------------------ Hero headline
+const _prefersReduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function countUp(el, to) {
+  to = Number(to) || 0;
+  if (_prefersReduced || to <= 0) { el.textContent = to; return; }
+  const dur = 620, t0 = performance.now();
+  (function step(now) {
+    const p = Math.min(1, (now - t0) / dur);
+    const eased = 1 - Math.pow(1 - p, 3);
+    el.textContent = Math.round(to * eased);
+    if (p < 1) requestAnimationFrame(step);
+  })(t0);
+}
+async function loadHero() {
+  const role = R();
+  const eb = $("#hero-eyebrow"), h = $("#hero-headline"), sub = $("#hero-sub");
+  if (!h) return;
+  if (eb) eb.textContent = `${role.label} · live on the shared platform`;
+  try {
+    if (role.student) {
+      const m = await getData("/api/matrix");
+      const row = m.rows.find(x => x.student.roll_no === role.student);
+      const eligible = row ? row.cells.filter(c => c.is_eligible).length : 0;
+      const name = row ? row.student.full_name.split(" ")[0] : "there";
+      const rn = await getData("/api/renewal-risk");
+      const atRisk = rn.results.some(x => x.student.roll_no === role.student && ["AT_RISK", "LIKELY_LOSS"].includes(x.risk_level));
+      h.innerHTML = `Hi ${esc(name)} — you qualify for <span class="hl" id="hero-n">0</span> scholarship${eligible === 1 ? "" : "s"}.`;
+      countUp($("#hero-n"), eligible);
+      sub.innerHTML = atRisk
+        ? `One of your renewals is <b>at risk</b> — check Renewal status before it lapses.`
+        : `Every scheme you match, with the exact rule behind each decision. Your renewals are on track.`;
+      return;
+    }
+    const c = await getData("/api/coverage");
+    const rec = await getData("/api/reconciliation");
+    h.innerHTML = `<span class="hl" id="hero-n">0</span> scholarship matches are sitting <span class="hl-blue">unclaimed</span>.`;
+    countUp($("#hero-n"), c.coverage_gap);
+    sub.innerHTML = `${c.total_eligible} eligible matches across ${role.label === "Head of Department" ? "the department" : "20 students"}, `
+      + `${c.total_covered} already covered${rec.suppress_count ? `, and ${rec.suppress_count} fee reminder(s) to suppress` : ""}. `
+      + `Agent&nbsp;42 works the gap down, scheme by scheme.`;
+  } catch (e) {
+    h.textContent = "Every eligible student, every scheme — accounted for.";
+    if (sub) sub.textContent = "";
+  }
 }
 
 // ------------------------------------------------------------------ tabs
@@ -173,11 +220,20 @@ loaders.coverage = async () => {
   const el = $("#panel-coverage"); loading(el, "/api/coverage");
   try {
     const d = await getData("/api/coverage");
-    const rows = d.per_scheme.map(s => `<tr>
+    const rows = d.per_scheme.map(s => {
+      const pct = s.eligible ? Math.round(100 * s.covered / s.eligible) : 0;
+      return `<tr>
         <td>${esc(s.scheme_name)}</td>
         <td>${s.eligible}</td><td>${s.applied}</td>
         <td class="cell-ok">${s.covered}</td>
-        <td class="${s.gap > 0 ? "cell-no" : ""}"><b>${s.gap}</b></td></tr>`).join("");
+        <td class="${s.gap > 0 ? "cell-no" : ""}"><b>${s.gap}</b></td>
+        <td class="cov-bar-cell">
+          <div class="cov-bar" title="${s.covered} of ${s.eligible} covered">
+            <span class="cov-bar-fill" style="width:${pct}%"></span>
+          </div>
+          <span class="cov-bar-pct">${pct}%</span>
+        </td></tr>`;
+    }).join("");
     const rej = d.rejections.length
       ? d.rejections.map(r => `<li>${esc(r.rejection_reason)} — <b>${r.n}</b></li>`).join("")
       : "<li>No rejections recorded.</li>";
@@ -192,7 +248,7 @@ loaders.coverage = async () => {
           <div class="kpi bad"><div class="num">${d.coverage_gap}</div><div class="lbl">Gap to close</div></div>
         </div>
         <div class="tbl-wrap"><table>
-          <thead><tr><th>Scheme</th><th>Eligible</th><th>Applied</th><th>Covered</th><th>Gap</th></tr></thead>
+          <thead><tr><th>Scheme</th><th>Eligible</th><th>Applied</th><th>Covered</th><th>Gap</th><th>Coverage</th></tr></thead>
           <tbody>${rows}</tbody></table></div>
       </div>
       <div class="card">
