@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% if page == 'privacy' %}Privacy Policy{% elif page == 'terms' %}Terms & Conditions{% else %}Cookie Policy{% endif %} · Agent 42</title>
-  <link rel="icon" href="{{ url_for('static', filename='img/vignan-logo.png') }}" />
+  <link rel="icon" href="{{ url_for('static', filename='img/vignan-logo.svg') }}" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <style>
@@ -31,7 +31,7 @@
 <body>
   <header class="lbar">
     <a class="lbrand" href="{{ url_for('index') }}">
-      <img src="{{ url_for('static', filename='img/vignan-logo.png') }}" alt="Vignan" onerror="this.style.display='none'" />
+      <img src="{{ url_for('static', filename='img/vignan-logo.svg') }}" alt="Vignan" onerror="this.style.display='none'" />
       Agent&nbsp;42
     </a>
     <nav class="lnav">

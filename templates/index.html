@@ -24,7 +24,7 @@
   <!-- ===================== Header ===================== -->
   <header class="topbar">
     <a class="brand" href="{{ url_for('index') }}">
-      <img src="{{ url_for('static', filename='img/vignan-logo.png') }}"
+      <img src="{{ url_for('static', filename='img/vignan-logo.svg') }}"
            alt="Vignan" class="logo" onerror="this.style.display='none'" />
       <span class="brand-mark" aria-hidden="true">
         <svg viewBox="0 0 40 40" width="30" height="30" role="img" aria-label="AURA">
@@ -45,7 +45,7 @@
     </a>
     <div class="topbar-right">
       <div class="badges">
-        <img src="{{ url_for('static', filename='img/badges.png') }}"
+        <img src="{{ url_for('static', filename='img/badges.png') }}?v=2"
              alt="NAAC A+, NIRF, NBA, UGC, ABET accreditation badges"
              class="badge-strip" onerror="this.style.display='none'" />
       </div>
@@ -98,7 +98,7 @@
     <div class="dh-bg" aria-hidden="true"></div>
     <video class="dh-video" id="dh-video" autoplay muted loop playsinline preload="none"
            poster="{{ url_for('static', filename='img/campus-hero.jpg') }}" aria-hidden="true">
-      <source src="{{ url_for('static', filename='video/campus.mp4') }}" type="video/mp4" />
+      <source src="{{ url_for('static', filename='video/campus.mp4') }}?v=2" type="video/mp4" />
     </video>
     <div class="dh-veil" aria-hidden="true"></div>
     <div class="dh-orbs" aria-hidden="true"><span></span><span></span><span></span></div>
