@@ -1,11 +1,27 @@
 /* Cookie consent manager — shared by landing and dashboard. */
-.cc-banner {
-  position: fixed; left: 16px; right: 16px; bottom: 16px; max-width: 940px; margin: 0 auto;
-  background: #ffffff; color: #1f2937; border: 1px solid #e3e9f4; border-radius: 16px;
-  padding: 16px 18px; display: flex; align-items: center; gap: 18px; justify-content: space-between;
-  box-shadow: 0 18px 50px rgba(9, 18, 45, .28); z-index: 500; font-size: 14px;
+/* First-run consent WALL: dims the page and asks for a choice before browsing. */
+.cc-consent {
+  position: fixed; inset: 0; z-index: 500; display: grid; place-items: center;
+  padding: 20px; animation: ccFade .3s ease;
 }
-.cc-banner[hidden], .cc-modal[hidden] { display: none; }
+.cc-consent-scrim {
+  position: absolute; inset: 0; background: rgba(7, 14, 34, .58);
+  -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.cc-consent-card {
+  position: relative; z-index: 1; width: 100%; max-width: 460px;
+  background: #fff; color: #1f2937; border: 1px solid #e3e9f4; border-radius: 20px;
+  padding: 22px 24px; box-shadow: 0 30px 70px rgba(7, 14, 34, .5);
+  animation: ccPop .42s cubic-bezier(.2, 1.1, .36, 1) both;
+}
+.cc-consent-ico { font-size: 30px; line-height: 1; }
+.cc-consent-h { margin: 8px 0 6px; font-size: 20px; color: #12224e; font-family: "Sora", system-ui, sans-serif; font-weight: 800; }
+.cc-consent .cc-text { max-width: none; font-size: 14px; color: #4b5563; line-height: 1.55; }
+.cc-consent .cc-actions { display: flex; gap: 8px; margin-top: 18px; flex-wrap: wrap; }
+.cc-consent .cc-actions .cc-btn { flex: 1; min-width: 120px; }
+@keyframes ccFade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ccPop { from { opacity: 0; transform: translateY(24px) scale(.96); } to { opacity: 1; transform: none; } }
+#cc-banner[hidden], .cc-modal[hidden] { display: none; }
 .cc-text b { color: #12224e; }
 .cc-text a { color: #2f6df6; }
 .cc-actions { display: flex; gap: 8px; flex-shrink: 0; }

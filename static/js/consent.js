@@ -17,14 +17,19 @@
   window.aiConsent = function () { var c = get(); return c ? c.ai !== false : true; };
 
   var markup =
-    '<div id="cc-banner" class="cc-banner" hidden>' +
-      '<div class="cc-text"><b>Cookies &amp; privacy.</b> We use essential cookies to sign you in, ' +
-        'plus optional cookies for preferences and AI features. ' +
-        '<a href="/cookies">Learn more</a>.</div>' +
-      '<div class="cc-actions">' +
-        '<button class="cc-btn" data-cc="deny">Deny all</button>' +
-        '<button class="cc-btn" data-cc="custom">Allow selected</button>' +
-        '<button class="cc-btn primary" data-cc="allow">Allow all</button>' +
+    '<div id="cc-banner" class="cc-consent" hidden>' +
+      '<div class="cc-consent-scrim"></div>' +
+      '<div class="cc-consent-card" role="dialog" aria-modal="true" aria-label="Cookies and privacy">' +
+        '<div class="cc-consent-ico" aria-hidden="true">🍪</div>' +
+        '<h3 class="cc-consent-h">Your privacy</h3>' +
+        '<div class="cc-text">We use essential cookies to sign you in, plus optional cookies for ' +
+          'preferences and AI features. Choose how you’d like to continue. ' +
+          '<a href="/cookies">Learn more</a>.</div>' +
+        '<div class="cc-actions">' +
+          '<button class="cc-btn" data-cc="deny">Deny all</button>' +
+          '<button class="cc-btn" data-cc="custom">Allow selected</button>' +
+          '<button class="cc-btn primary" data-cc="allow">Allow all</button>' +
+        '</div>' +
       '</div>' +
     '</div>' +
     '<div id="cc-modal" class="cc-modal" hidden>' +
