@@ -300,28 +300,56 @@ a { color: inherit; }
 .panels { padding: 0 clamp(16px, 4vw, 32px) 60px; max-width: 1240px; margin: 0 auto; width: 100%; min-height: 80vh; }
 .panel { display: none; }
 .panel.active { display: block; }
-.panels { perspective: 1600px; }
+.panels { perspective: 1700px; }
 .panel { position: relative; }
-.panel.anim { animation: panelIn .5s cubic-bezier(.22, 1, .36, 1); }
-.panel.anim[data-dir="right"] { animation-name: panel3dR; }
-.panel.anim[data-dir="left"] { animation-name: panel3dL; }
-@keyframes panelIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-@keyframes panel3dR {
-  0%   { opacity: 0; transform: translateX(84px) rotateY(-7deg) scale(.975); }
-  100% { opacity: 1; transform: none; }
+.panel.anim { animation: panelFade .32s ease; }
+@keyframes panelFade { from { opacity: .4; } to { opacity: 1; } }
+/* The satisfying part: each card glides in from the swipe direction and settles,
+   one after another, so the section visibly "assembles" itself. */
+.panel.anim > * { animation: asmUp .54s cubic-bezier(.2, 1.05, .32, 1) both; }
+.panel.anim[data-dir="right"] > * { animation-name: asmR; }
+.panel.anim[data-dir="left"]  > * { animation-name: asmL; }
+.panel.anim > *:nth-child(1) { animation-delay: .02s; }
+.panel.anim > *:nth-child(2) { animation-delay: .10s; }
+.panel.anim > *:nth-child(3) { animation-delay: .18s; }
+.panel.anim > *:nth-child(4) { animation-delay: .26s; }
+.panel.anim > *:nth-child(5) { animation-delay: .34s; }
+.panel.anim > *:nth-child(n+6) { animation-delay: .40s; }
+@keyframes asmUp { from { opacity: 0; transform: translateY(28px) scale(.98); } to { opacity: 1; transform: none; } }
+@keyframes asmR  { from { opacity: 0; transform: translateX(80px) translateY(14px) scale(.97) rotateY(-5deg); } to { opacity: 1; transform: none; } }
+@keyframes asmL  { from { opacity: 0; transform: translateX(-80px) translateY(14px) scale(.97) rotateY(5deg); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .panel.anim, .panel.anim > * { animation: none !important; } }
+
+/* ---------- Section nav: arrows + swipe hint ---------- */
+.sec-arrow {
+  position: fixed; top: 56%; transform: translateY(-50%); z-index: 45;
+  width: 46px; height: 46px; border-radius: 50%; cursor: pointer;
+  border: 1px solid var(--line); background: rgba(255,255,255,.72);
+  -webkit-backdrop-filter: blur(10px); backdrop-filter: blur(10px);
+  color: var(--blue-dark); font-size: 26px; line-height: 1; font-family: var(--font-alt);
+  display: grid; place-items: center; box-shadow: var(--shadow-md);
+  transition: transform .18s ease, background .18s ease, opacity .2s ease;
 }
-@keyframes panel3dL {
-  0%   { opacity: 0; transform: translateX(-84px) rotateY(7deg) scale(.975); }
-  100% { opacity: 1; transform: none; }
+.sec-arrow.prev { left: 14px; } .sec-arrow.next { right: 14px; }
+.sec-arrow:hover { background: var(--blue); color: #fff; transform: translateY(-50%) scale(1.08); }
+.sec-arrow.at-end { opacity: 0; pointer-events: none; }
+:root[data-theme="dark"] .sec-arrow { background: rgba(21,30,51,.8); }
+@media (max-width: 720px) { .sec-arrow { width: 38px; height: 38px; font-size: 21px; top: auto; bottom: 92px; transform: none; } .sec-arrow:hover { transform: scale(1.06); } }
+
+.swipe-hint {
+  position: fixed; left: 50%; bottom: 22px; transform: translateX(-50%);
+  z-index: 46; background: var(--navy); color: #fff; font-size: 13px; font-weight: 600;
+  padding: 9px 16px; border-radius: 999px; box-shadow: 0 12px 30px rgba(18,34,78,.35);
+  display: inline-flex; align-items: center; gap: 8px; white-space: nowrap; max-width: calc(100vw - 32px);
+  animation: hintIn .5s ease both;
 }
-/* video-editor style light sweep that glides across on every switch */
-.panel.anim::before {
-  content: ""; position: absolute; inset: 0; z-index: 6; pointer-events: none;
-  background: linear-gradient(105deg, transparent 34%, rgba(150,180,255,.18) 50%, transparent 66%);
-  animation: panelSheen .62s ease;
-}
-@keyframes panelSheen { from { transform: translateX(-75%); opacity: .9; } to { transform: translateX(165%); opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .panel.anim, .panel.anim::before { animation: none !important; } }
+.swipe-hint.hide { opacity: 0; transform: translateX(-50%) translateY(12px); pointer-events: none; transition: opacity .5s ease, transform .5s ease; }
+.swipe-hint .sh-ic { font-size: 15px; animation: hintNudge 1.5s ease-in-out infinite; }
+.swipe-hint b { color: #ffd27a; }
+@keyframes hintIn { from { opacity: 0; transform: translateX(-50%) translateY(14px); } to { opacity: 1; transform: translateX(-50%); } }
+@keyframes hintNudge { 0%,100% { transform: translateX(-2px); } 50% { transform: translateX(2px); } }
+@media (max-width: 480px) { .swipe-hint { font-size: 11.5px; padding: 8px 12px; bottom: 16px; } }
+@media (prefers-reduced-motion: reduce) { .swipe-hint .sh-ic { animation: none; } }
 .card {
   background: var(--card); border: 1px solid var(--line); border-radius: 16px;
   box-shadow: var(--shadow); padding: 22px 24px; margin-top: 18px;
