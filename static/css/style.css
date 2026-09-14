@@ -47,7 +47,7 @@ a { color: inherit; }
 /* ---------- Header ---------- */
 .topbar {
   display: flex; align-items: center; justify-content: space-between;
-  gap: 16px; padding: 4px clamp(16px, 4vw, 32px);
+  gap: 16px; padding: 3px clamp(16px, 4vw, 32px);
   background: rgba(255, 255, 255, .84);
   backdrop-filter: saturate(140%) blur(12px);
   border-bottom: 1px solid var(--line);
@@ -68,7 +68,7 @@ a { color: inherit; }
   font-family: var(--font-alt); font-size: 11px; font-weight: 700; color: var(--navy);
   border: 1px solid #cfe0ff; background: #f0f6ff; border-radius: 999px; padding: 4px 10px;
 }
-.badge-strip { height: 96px; }
+.badge-strip { height: 84px; }
 .session { display: flex; align-items: center; gap: 12px; }
 .session-chip {
   display: inline-flex; align-items: center; gap: 7px;
@@ -113,7 +113,7 @@ a { color: inherit; }
 .dash-hero {
   position: relative; overflow: hidden;
   margin: 0; isolation: isolate;
-  min-height: calc(100vh - 106px);   /* fill the screen with the drone campus (below the header) */
+  min-height: calc(100vh - 92px);   /* fill the screen with the drone campus (below the header) */
   display: flex; flex-direction: column;
   border-bottom: 1px solid rgba(255,255,255,.14);
   perspective: 1200px;
