@@ -12,6 +12,25 @@
   var hasGSAP = typeof window.gsap !== "undefined";
   var motionOn = !reduceMotion && hasGSAP;
 
+  // ---- Intro gate: play the load animation only once the visitor can see it.
+  //      First visit -> the cookie wall is up, so wait for the choice; a
+  //      returning visitor (consent already stored) plays immediately. A 6s
+  //      safety timer guarantees the intro is never left unplayed. ----
+  var _readyCbs = [], _ready = false;
+  function markReady() {
+    if (_ready) return; _ready = true;
+    _readyCbs.forEach(function (f) { try { f(); } catch (e) {} });
+    _readyCbs = [];
+  }
+  function onReady(cb) { if (_ready) cb(); else _readyCbs.push(cb); }
+  (function () {
+    var has = false;
+    try { has = !!localStorage.getItem("agent42-consent"); } catch (e) {}
+    if (has) { markReady(); return; }        // returning visitor — no wall
+    window.addEventListener("cc:consent", markReady, { once: true });
+    setTimeout(markReady, 6000);             // safety net
+  })();
+
   // ---- Nav shadow on scroll (cheap, no dependency) ----
   var nav = document.getElementById("nav");
   function onScrollNav() {
@@ -65,14 +84,17 @@
   }
 
   // Static baseline (matches seeded DB); upgrade if fetch succeeds.
-  drawMeter(29, 4, false);
+  // Gated so the count-up is actually seen (not run behind the consent wall).
+  onReady(function () { drawMeter(29, 4, false); });
 
   fetch("/api/coverage")
     .then(function (r) { return r.json(); })
     .then(function (d) {
       if (!d || d.error || typeof d.total_eligible !== "number") return;
-      drawMeter(d.total_eligible, d.total_covered, true);
-      renderCoverageRows(d.per_scheme);
+      onReady(function () {
+        drawMeter(d.total_eligible, d.total_covered, true);
+        renderCoverageRows(d.per_scheme);
+      });
     })
     .catch(function () { /* offline / no DB: keep static numbers */ });
 
@@ -135,12 +157,15 @@
       });
     });
 
-    // Hero: reveal on load in a short stagger (hierarchy).
+    // Hero: reveal on load in a short stagger (hierarchy). Hidden immediately,
+    // then revealed once the visitor can see it (after the cookie choice).
     var heroBits = gsap.utils.toArray("#hero [data-reveal]");
     gsap.set(heroBits, { opacity: 0, y: 26 });
-    gsap.to(heroBits, {
-      opacity: 1, y: 0, duration: 0.9, ease: "power3.out",
-      stagger: 0.09, delay: 0.15
+    onReady(function () {
+      gsap.to(heroBits, {
+        opacity: 1, y: 0, duration: 0.9, ease: "power3.out",
+        stagger: 0.09, delay: 0.15
+      });
     });
 
     ScrollTrigger.refresh();

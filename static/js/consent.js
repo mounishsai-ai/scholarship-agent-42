@@ -74,6 +74,8 @@
   function decide(pref, ai, choice) {
     persist({ necessary: true, preferences: pref, ai: ai, choice: choice });
     banner.hidden = true; closeModal();
+    // Let the page (e.g. the landing intro) play now that the wall is gone.
+    try { window.dispatchEvent(new Event("cc:consent")); } catch (e) {}
   }
 
   document.addEventListener("click", function (e) {
