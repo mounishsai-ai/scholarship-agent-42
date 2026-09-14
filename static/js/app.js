@@ -113,6 +113,7 @@ function applyRole() {
   loadKpis();
   loadHero();
   const name = active.dataset.tab;
+  if (typeof _activeTabName !== "undefined") _activeTabName = name;
   replay($("#panel-" + name));
   if (loaders[name]) loaders[name]();
 }
@@ -165,16 +166,44 @@ async function loadHero() {
 
 // ------------------------------------------------------------------ tabs
 const loaders = {};
-$$(".tab").forEach(tab => tab.addEventListener("click", () => {
-  $$(".tab").forEach(t => t.classList.remove("active"));
+const TAB_ORDER = $$(".tab").map(t => t.dataset.tab);
+let _activeTabName = "coverage";
+// Switch tab with a directional slide (right = forward, left = back) — the
+// "swipe between tabs" feel, keyboard/click/touch all route through here.
+function switchTab(name) {
+  if (!name || name === _activeTabName) return;
+  const from = TAB_ORDER.indexOf(_activeTabName), to = TAB_ORDER.indexOf(name);
+  const dir = to >= from ? "right" : "left";
+  $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
   $$(".panel").forEach(p => p.classList.remove("active"));
-  tab.classList.add("active");
-  const name = tab.dataset.tab;
   const panel = $("#panel-" + name);
+  if (!panel) return;
   panel.classList.add("active");
+  panel.dataset.dir = dir;
   replay(panel);
+  _activeTabName = name;
   if (loaders[name]) loaders[name]();
-}));
+}
+$$(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
+
+// Swipe left/right on the panels to move between visible tabs (touch + trackpad drag).
+(function () {
+  const area = $(".panels"); if (!area) return;
+  let x0 = null, y0 = null;
+  const visible = () => $$(".tab").filter(t => !t.hidden).map(t => t.dataset.tab);
+  const go = (delta) => {
+    const vis = visible(); const i = vis.indexOf(_activeTabName);
+    const j = i + delta;
+    if (j >= 0 && j < vis.length) switchTab(vis[j]);
+  };
+  area.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; y0 = e.touches[0].clientY; }, { passive: true });
+  area.addEventListener("touchend", (e) => {
+    if (x0 === null) return;
+    const dx = e.changedTouches[0].clientX - x0, dy = e.changedTouches[0].clientY - y0;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.6) go(dx < 0 ? 1 : -1);
+    x0 = y0 = null;
+  }, { passive: true });
+})();
 
 // role buttons
 $$(".role").forEach(b => b.addEventListener("click", () => {
@@ -811,4 +840,47 @@ applyRole();
     const el = $("#pb-db");
     if (el && d && d.database && d.database.provider) el.textContent = d.database.provider;
   }).catch(() => {});
+})();
+
+// ------------------------------------------------------------------ 3D tilt on KPI cards
+(function () {
+  if (_prefersReduced) return;
+  const host = $("#kpis"); if (!host) return;
+  const MAX = 9;  // degrees
+  host.addEventListener("pointermove", (e) => {
+    const card = e.target.closest(".kpi"); if (!card) return;
+    const r = card.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+    card.style.setProperty("--ry", ((px - 0.5) * 2 * MAX).toFixed(2) + "deg");
+    card.style.setProperty("--rx", ((0.5 - py) * 2 * MAX).toFixed(2) + "deg");
+    card.style.setProperty("--gx", (px * 100).toFixed(0) + "%");
+    card.style.setProperty("--gy", (py * 100).toFixed(0) + "%");
+  });
+  host.addEventListener("pointerleave", () => {
+    $$(".kpi", host).forEach(c => { c.style.setProperty("--rx", "0deg"); c.style.setProperty("--ry", "0deg"); });
+  }, true);
+})();
+
+// ------------------------------------------------------------------ Campus video: fade in only once it actually plays
+(function () {
+  const v = $("#dh-video"); if (!v) return;
+  if (_prefersReduced) { v.remove(); return; }   // keep the still poster for reduced motion
+  v.addEventListener("playing", () => v.classList.add("is-playing"), { once: true });
+  v.addEventListener("error", () => v.remove());  // no mp4 yet → fall back to the poster image
+  const src = v.querySelector("source");
+  if (src) { const t = src.getAttribute("src"); src.setAttribute("src", t); v.load(); }
+  const p = v.play(); if (p && p.catch) p.catch(() => {});
+})();
+
+// ------------------------------------------------------------------ AURA bot: "Ask me!" bubble
+(function () {
+  const bubble = $("#cl-bubble"), toggle = $("#chat-toggle"), chat = $("#chat");
+  if (!bubble || !toggle) return;
+  let dismissed = false, timer = null;
+  const show = () => { if (dismissed || (chat && !chat.classList.contains("hidden"))) return; bubble.hidden = false; };
+  const hide = () => { bubble.hidden = true; };
+  const cycle = () => { show(); setTimeout(hide, 6500); timer = setTimeout(cycle, 32000); };
+  setTimeout(cycle, 2800);
+  toggle.addEventListener("click", () => { dismissed = true; hide(); if (timer) clearTimeout(timer); });
+  bubble.addEventListener("click", () => toggle.click());
 })();
