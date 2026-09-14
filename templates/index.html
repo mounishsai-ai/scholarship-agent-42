@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=21" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=22" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -75,16 +75,6 @@
     </div>
   </header>
 
-  <!-- Full-width platform status bar (glass morphism style) -->
-  <div class="platform-bar" id="platform-bar">
-    <span class="pb-item"><span class="pb-dot"></span><b id="pb-db">Platform database</b>&nbsp;connected</span>
-    <span class="pb-sep">·</span>
-    <span class="pb-item">Consumes <b>Agent&nbsp;10</b>, <b>Agent&nbsp;11</b></span>
-    <span class="pb-sep">·</span>
-    <span class="pb-item">Feeds <b>Agent&nbsp;40</b>, <b>Agent&nbsp;41</b>, <b>Agent&nbsp;43</b></span>
-    <a href="#" class="pb-link" data-goto-integrations>See live data &amp; lineage →</a>
-  </div>
-
   {% if not db_ready %}
   <div class="banner banner-warn">
     Database not connected. Copy <code>.env.example</code> to <code>.env</code>, paste your
@@ -102,6 +92,18 @@
     </video>
     <div class="dh-veil" aria-hidden="true"></div>
     <div class="dh-orbs" aria-hidden="true"><span></span><span></span><span></span></div>
+
+    <!-- Full-width glass status bar, video playing behind it -->
+    <div class="platform-bar" id="platform-bar">
+      <div class="pb-inner">
+        <span class="pb-item"><span class="pb-dot"></span><b id="pb-db">Platform database</b>&nbsp;connected</span>
+        <span class="pb-sep">·</span>
+        <span class="pb-item">Consumes <b>Agent&nbsp;10</b>, <b>Agent&nbsp;11</b></span>
+        <span class="pb-sep">·</span>
+        <span class="pb-item">Feeds <b>Agent&nbsp;40</b>, <b>Agent&nbsp;41</b>, <b>Agent&nbsp;43</b></span>
+        <a href="#" class="pb-link" data-goto-integrations>See live data &amp; lineage →</a>
+      </div>
+    </div>
 
     <div class="dh-inner">
       <div class="role-switch">

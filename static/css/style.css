@@ -55,7 +55,7 @@ a { color: inherit; }
 }
 .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
 .brand-mark { display: inline-flex; }
-.logo { height: 52px; width: auto; }
+.logo { height: 73px; width: auto; }
 .brand-kicker { font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .08em; color: var(--blue); font-weight: 600; }
 .brand-title { font-family: var(--font-display); font-size: 20px; font-weight: 800; color: var(--navy); line-height: 1.1; margin-top: 2px; }
 .agent-no {
@@ -68,7 +68,7 @@ a { color: inherit; }
   font-family: var(--font-alt); font-size: 11px; font-weight: 700; color: var(--navy);
   border: 1px solid #cfe0ff; background: #f0f6ff; border-radius: 999px; padding: 4px 10px;
 }
-.badge-strip { height: 65px; }
+.badge-strip { height: 96px; }
 .session { display: flex; align-items: center; gap: 12px; }
 .session-chip {
   display: inline-flex; align-items: center; gap: 7px;
@@ -789,22 +789,23 @@ code { font-family: var(--font-mono); font-size: 12px; background: rgba(47,109,2
 .int-live b { font-family: var(--font-mono); color: var(--indigo); }
 
 /* ---------- Always-visible platform status bar ---------- */
-/* Full-width platform status bar — glass-morphism style, same position as before */
+/* Full-width glass status bar with the drone video playing behind it */
 .platform-bar {
-  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-  padding: 10px clamp(16px, 4vw, 32px); font-size: 13px; color: var(--ink);
-  background: rgba(255, 255, 255, .55);
-  -webkit-backdrop-filter: blur(16px) saturate(160%); backdrop-filter: blur(16px) saturate(160%);
-  border-bottom: 1px solid rgba(255, 255, 255, .6);
-  box-shadow: 0 4px 18px -12px rgba(18, 34, 78, .4);
+  position: relative; z-index: 2; width: 100%; color: #eaf1ff;
+  background: rgba(255, 255, 255, .07);
+  -webkit-backdrop-filter: blur(16px) saturate(150%); backdrop-filter: blur(16px) saturate(150%);
+  border-bottom: 1px solid rgba(255, 255, 255, .14);
+}
+.pb-inner {
+  max-width: 1240px; margin: 0 auto; padding: 11px clamp(16px, 4vw, 32px);
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px;
 }
 .pb-item { display: inline-flex; align-items: center; gap: 6px; }
-.pb-item b { color: var(--indigo); }
-.pb-sep { color: var(--muted); opacity: .5; }
-.pb-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 0 3px rgba(18,161,80,.18); animation: pbpulse 2s ease-in-out infinite; }
-@keyframes pbpulse { 0%,100% { box-shadow: 0 0 0 3px rgba(18,161,80,.18); } 50% { box-shadow: 0 0 0 5px rgba(18,161,80,.06); } }
-.pb-link { margin-left: auto; color: var(--blue); font-weight: 600; text-decoration: none; white-space: nowrap; }
-.pb-link:hover { text-decoration: underline; }
-:root[data-theme="dark"] .platform-bar { background: rgba(21, 30, 51, .55); border-bottom-color: rgba(255,255,255,.08); }
+.pb-item b { color: #ffffff; }
+.pb-sep { color: #cdd9f4; opacity: .5; }
+.pb-dot { width: 8px; height: 8px; border-radius: 50%; background: #38e08a; box-shadow: 0 0 0 3px rgba(56,224,138,.22); animation: pbpulse 2s ease-in-out infinite; }
+@keyframes pbpulse { 0%,100% { box-shadow: 0 0 0 3px rgba(56,224,138,.22); } 50% { box-shadow: 0 0 0 6px rgba(56,224,138,.05); } }
+.pb-link { margin-left: auto; color: #bcd6ff; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.pb-link:hover { color: #fff; text-decoration: underline; }
 @media (prefers-reduced-motion: reduce) { .pb-dot { animation: none; } }
-@media (max-width: 720px) { .pb-sep { display: none; } .platform-bar { font-size: 12px; } .pb-link { margin-left: 0; } }
+@media (max-width: 720px) { .pb-sep { display: none; } .pb-inner { font-size: 12px; } .pb-link { margin-left: 0; } }
