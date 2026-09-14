@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=12" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=13" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=1" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -93,19 +93,61 @@
   </div>
   {% endif %}
 
-  <!-- ===================== Role switcher + KPI strip ===================== -->
-  <section class="controls">
-    <div class="role-switch">
-      <span>View as</span>
-      <button class="role active" data-role="ACCOUNTS">Scholarship Officer</button>
-      <button class="role" data-role="HOD">Head of Department</button>
-      <button class="role" data-role="ACCT">Accounts</button>
-      <button class="role" data-role="STUDENT">Student</button>
-    </div>
-    <div class="kpis" id="kpis"><!-- filled by JS --></div>
-  </section>
+  <!-- ===================== Dashboard hero (campus, headline, KPIs) ===================== -->
+  <section class="dash-hero" id="dash-hero">
+    <div class="dh-bg" aria-hidden="true"></div>
+    <div class="dh-veil" aria-hidden="true"></div>
+    <div class="dh-orbs" aria-hidden="true"><span></span><span></span><span></span></div>
 
-  <div class="scope-bar"><span class="scope-eye" aria-hidden="true">👁</span><span id="scope-note"></span></div>
+    <div class="dh-inner">
+      <div class="role-switch">
+        <span>View as</span>
+        <button class="role active" data-role="ACCOUNTS">Scholarship Officer</button>
+        <button class="role" data-role="HOD">Head of Department</button>
+        <button class="role" data-role="ACCT">Accounts</button>
+        <button class="role" data-role="STUDENT">Student</button>
+      </div>
+
+      <div class="dh-main">
+        <div class="dh-copy">
+          <div class="dh-eyebrow"><span class="dh-live" aria-hidden="true"></span><span id="hero-eyebrow">Agent&nbsp;42 · live on the shared platform</span></div>
+          <h1 class="dh-headline" id="hero-headline">Reading the platform…</h1>
+          <p class="dh-sub" id="hero-sub">Every eligible student, every scheme — accounted for.</p>
+          <div class="scope-bar"><span class="scope-eye" aria-hidden="true">👁</span><span id="scope-note"></span></div>
+        </div>
+
+        <div class="dh-mascot" aria-hidden="true">
+          <svg viewBox="0 0 150 140" width="150" height="140" role="img" aria-label="Buji the Scholarship Agent">
+            <ellipse cx="70" cy="128" rx="40" ry="7" fill="#0b1330" opacity="0.28"/>
+            <!-- waving arm -->
+            <g class="buji-arm">
+              <path d="M104 66 q22 -6 28 -26" stroke="#eaf1ff" stroke-width="9" fill="none" stroke-linecap="round"/>
+              <circle cx="132" cy="40" r="7" fill="#e8930c"/>
+            </g>
+            <rect x="30" y="52" width="80" height="64" rx="21" fill="#2f6df6"/>
+            <rect x="30" y="52" width="80" height="64" rx="21" fill="url(#dhBuji)"/>
+            <rect x="42" y="70" width="23" height="26" rx="11.5" fill="#eaf1ff"/>
+            <rect x="75" y="70" width="23" height="26" rx="11.5" fill="#eaf1ff"/>
+            <circle class="buji-eye" cx="53.5" cy="83" r="6.2" fill="#12224e"/>
+            <circle class="buji-eye" cx="86.5" cy="83" r="6.2" fill="#12224e"/>
+            <rect x="60" y="104" width="20" height="4.4" rx="2.2" fill="#eaf1ff" opacity="0.85"/>
+            <path d="M20 44 L70 26 L120 44 L70 62 Z" fill="#12224e"/>
+            <rect x="67" y="30" width="6" height="22" rx="3" fill="#12224e"/>
+            <circle cx="70" cy="28" r="6.4" fill="#e8930c"/>
+            <defs>
+              <linearGradient id="dhBuji" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="#ffffff" stop-opacity="0.20"/>
+                <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+          </svg>
+          <div class="dh-mascot-tag">Buji · your agent</div>
+        </div>
+      </div>
+
+      <div class="kpis dh-kpis" id="kpis"><!-- filled by JS --></div>
+    </div>
+  </section>
 
   <!-- ===================== Tabs ===================== -->
   <nav class="tabs">
@@ -242,7 +284,7 @@
     </form>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=9"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=10"></script>
   <script src="{{ url_for('static', filename='js/consent.js') }}?v=1"></script>
 </body>
 </html>
