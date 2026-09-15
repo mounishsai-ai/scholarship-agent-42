@@ -171,8 +171,14 @@ const TAB_ORDER = $$(".tab").map(t => t.dataset.tab);
 let _activeTabName = "coverage";
 // Switch tab with a directional slide (right = forward, left = back) — the
 // "swipe between tabs" feel, keyboard/click/touch all route through here.
-function switchTab(name) {
-  if (!name || name === _activeTabName) return;
+function switchTab(name, opts) {
+  opts = opts || {};
+  if (!name) return;
+  const scrollToContent = () => {
+    const a = document.querySelector(".tabs");
+    if (a) a.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  if (name === _activeTabName) { if (opts.scrollToContent) scrollToContent(); return; }
   const keepY = window.scrollY;   // never yank the viewport to the top on switch
   const from = TAB_ORDER.indexOf(_activeTabName), to = TAB_ORDER.indexOf(name);
   const dir = to >= from ? "right" : "left";
@@ -185,10 +191,11 @@ function switchTab(name) {
   replay(panel);
   _activeTabName = name;
   if (window.__updateSecNav) window.__updateSecNav();
-  const keep = () => window.scrollTo(0, keepY);
-  requestAnimationFrame(keep);
+  // Either bring the section content into view, or keep the current scroll.
+  const after = opts.scrollToContent ? scrollToContent : () => window.scrollTo(0, keepY);
+  requestAnimationFrame(after);
   const p = loaders[name] ? loaders[name]() : null;
-  if (p && p.then) p.then(() => requestAnimationFrame(keep));
+  if (p && p.then) p.then(() => requestAnimationFrame(after));
 }
 $$(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 
@@ -877,7 +884,7 @@ applyRole();
   const intTab = document.querySelector('.tab[data-tab="integrations"]');
   if (link) {
     if (!intTab || intTab.hidden) link.style.display = "none";
-    else link.addEventListener("click", (e) => { e.preventDefault(); intTab.click(); });
+    else link.addEventListener("click", (e) => { e.preventDefault(); switchTab("integrations", { scrollToContent: true }); });
   }
   getData("/api/integrations").then(d => {
     const el = $("#pb-db");
