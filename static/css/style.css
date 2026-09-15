@@ -120,7 +120,7 @@ a { color: inherit; }
 }
 .dh-bg {
   position: absolute; inset: 0; z-index: -4;
-  background: #12244f url("../img/campus.webp") center 42% / cover no-repeat;
+  background: #12244f url("../img/sunrise.jpg") center 42% / cover no-repeat;
   transform: scale(1.06);
   animation: dhKen 40s ease-in-out infinite alternate;
 }
