@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=28" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=29" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -86,10 +86,6 @@
   <!-- ===================== Dashboard hero (campus video, headline, 3D KPIs) ===================== -->
   <section class="dash-hero" id="dash-hero">
     <div class="dh-bg" aria-hidden="true"></div>
-    <video class="dh-video" id="dh-video" autoplay muted loop playsinline preload="none"
-           poster="{{ url_for('static', filename='img/campus-hero.jpg') }}" aria-hidden="true">
-      <source src="{{ url_for('static', filename='video/campus.mp4') }}?v=4" type="video/mp4" />
-    </video>
     <div class="dh-veil" aria-hidden="true"></div>
     <div class="dh-orbs" aria-hidden="true"><span></span><span></span><span></span></div>
 

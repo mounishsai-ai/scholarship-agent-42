@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=13" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=14" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
 </head>
 <body>
@@ -77,6 +77,10 @@
 
 <!-- ============================ HERO ============================ -->
 <section class="hero" id="hero">
+  <video class="hero-video" id="hero-video" autoplay muted loop playsinline preload="none"
+         poster="{{ url_for('static', filename='img/campus-hero.jpg') }}" aria-hidden="true">
+    <source src="{{ url_for('static', filename='video/campus.mp4') }}?v=4" type="video/mp4" />
+  </video>
   <div class="hero-glow" aria-hidden="true"></div>
   <div class="hero-grid">
 

@@ -120,7 +120,12 @@ a { color: inherit; text-decoration: none; }
   padding: clamp(40px, 7vw, 90px) 0 clamp(70px, 9vw, 120px);
   background: #12244f;
 }
-/* Vignan campus behind the hero, with a slow drift; blue-toned so it blends. */
+/* Campus drone video behind the hero (swapped in from the dashboard). */
+.hero-video {
+  position: absolute; inset: 0; z-index: 0;
+  width: 100%; height: 100%; object-fit: cover;
+}
+/* Vignan campus still behind the hero as a fallback if the video can't play. */
 .hero::before {
   content: ""; position: absolute; inset: 0; z-index: 0;
   background: #12244f url("../img/campus.webp") center 42% / cover no-repeat;
