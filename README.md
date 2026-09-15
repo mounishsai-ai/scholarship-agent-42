@@ -32,7 +32,7 @@ That evidence trail is what makes this an **agent**, not a CRUD app.
 ## Architecture (one screen, top to bottom)
 
 ```
-Browser (dashboard + Buji-style chat)     templates/ , static/
+Browser (dashboard + AURA chat)           templates/ , static/
         │  fetch JSON
 Flask web server                          app.py
         │  calls one function per request
@@ -49,6 +49,96 @@ Shared platform database (Supabase)       ../files/*.sql  +  seed.sql
 - **`app.py`** — thin Flask routes; each calls one engine function. `/api/chat` is the only
   place Gemini is used, and only to phrase numbers the engine already computed.
 - **`seed.sql`** — the demo world, built around three stories (below).
+
+---
+
+## End-to-End (how it actually works)
+
+> Reference for later / interview prep. This is the honest, mechanism-level version:
+> what is **automated**, what is **human-in-the-loop**, and what is **demo-modeled**.
+
+### The core idea in one paragraph
+72 agents share **one PostgreSQL database**. No agent calls another agent's code or website —
+they *integrate by reading and writing the same tables*. Agent 42 **reads** what Agents 10
+(academic performance) and 11 (attendance) put in the DB, and **writes** facts that Agents 40
+(fee management), 41 (fee reminders) and 43 (education-loan docs) read out of it. "Input / output"
+= which shared tables we read vs write. Every figure the UI shows is computed **deterministically in
+SQL/Python** — the LLM (Gemini) only *phrases* answers, it never originates a number.
+
+### Request lifecycle (every screen)
+```
+Browser  --fetch /api/x-->  Flask (app.py)  --one call-->  scholarship_engine.py
+                                                             │  evaluate() / match / reconcile …
+                                                             ▼
+                                                  db.py → shared Postgres (Cloud SQL in prod)
+                                                             │  writes an audit trail as it goes:
+                                              agentops.agent_run → agent_run_input (provenance)
+                                                      → agent_output (reasoning_summary) → risk_flag
+```
+Each API route calls exactly one engine function; reads go through the **views**
+(`people.v_student_profile`, `attendance.v_current_attendance`), not base tables.
+
+### The agentic loop (what makes it not CRUD): detect → decide → act → measure
+1. **Detect** — a scheduled/triggered sweep reads the shared data (e.g. every live scholarship's
+   current attendance vs its renewal rule).
+2. **Decide** — the deterministic engine evaluates rules and records the *working* (which rule
+   passed/failed) as the `reasoning_summary`.
+3. **Act** — anything that touches a student (notify, suppress a reminder, sanction) is a
+   **Class-3 action: it waits for a human to approve** in the approval queue, then writes the result
+   to the shared DB.
+4. **Measure** — coverage %, gap, rejection reasons; the loop is auditable end to end via `agentops`.
+
+### End-to-end flow #1 — an officer registers a new scheme
+1. **Scheme Register → "+ Add scheme"**: officer enters code, name, provider, benefit, application
+   window, required documents, renewable?, and **eligibility rules** (e.g. `income ≤ 250000`,
+   `cgpa ≥ 7`, `category in [SC,ST]`, `gender = F`).
+2. `POST /api/scheme → create_scheme()` inserts one row into `finance.scholarship_scheme` with the
+   rules stored as JSONB, and logs an `agent_run`.
+3. **Instantly, no extra work:** on the next read, `evaluate()` walks each rule against every one of
+   the 20 students' facts → the scheme appears in the **Eligibility Matrix**, **Coverage** recomputes
+   the gap, and each matching student becomes "eligible" (with a **Why?** listing the rules that
+   passed). *This is spec workflow-step 2 — "match every student against every scheme" — made live.*
+4. Downstream unlocks for that scheme: notify → prepare pack → track → renewal → reconcile.
+
+### End-to-end flow #2 — fee reconciliation → suppress a reminder
+1. `reconcile()` joins `scholarship_application → fee_demand → reminder_dispatch`.
+   - **Covered** = amount *disbursed* (or *sanctioned* if not yet paid). **Outstanding** = fee still
+     due on the ledger.
+   - It **recommends** suppression when `there is an active reminder AND covered ≥ outstanding > 0`.
+2. It does **not** auto-suppress — governance requires a human, because this affects a student's
+   money and communications. The officer clicks **Suppress reminder** (approval gate).
+3. `suppress_reminder()` runs `UPDATE finance.reminder_dispatch SET suppressed = true …` **in the
+   shared DB**. Agent 41 (Fee Due Reminder) **reads that flag** and stops chasing. That's the entire
+   "feeds Agent 41" integration — a shared-table write, not an API call.
+
+### End-to-end flow #3 — renewal risk
+`renewal_risk()` reads each live award's current attendance/CGPA (from Agents 10/11's shared data),
+compares to the scheme's `renewal_criteria`, assigns a level (`NONE / WATCH / AT_RISK / LIKELY_LOSS`),
+persists a `scholarship_renewal_risk` row, and raises a `SCHOLARSHIP_RISK` `risk_flag` **before** the
+award lapses — the "catch it while there's still time" beat.
+
+### End-to-end flow #4 — the chat (AURA)
+`/api/chat` is the only place Gemini is used. A rule-based router picks the right engine function;
+Gemini phrases the **engine's** numbers over the data context. With no key / no internet it falls
+back to deterministic templates — so a network failure changes wording, never the answer. Role
+scoping is enforced (a student can only see their own record).
+
+### What's automated vs manual vs demo-modeled (be honest in interviews)
+| Piece | Reality |
+|---|---|
+| Eligibility matching, coverage, renewal detection, reconciliation math | **Fully automated & deterministic** — computed from the JSONB rules + shared data. |
+| Notifying, suppressing reminders, sanctioning | **Automated recommendation, human-approved** (Class-3 approval gate). |
+| Document checklist | List is **auto** (from the scheme's `required_documents`); the tick-boxes are a **manual** "collected" tracker (institution-held docs could be pre-ticked — enhancement). |
+| Application status feed (submitted→…→disbursed) | Table is the system of record; in the **real world** a scholarship-section staffer (or a future NSP-portal ingestion) updates it — govt data arrives as portal logins / emails / PDFs, no clean API. Seeded here for the demo. |
+| Agents 10 & 11 (inputs) | **Stubbed** — owned by other teams; we read their shared views directly and label them stubbed. |
+
+### Stack & deployment
+- **Flask + vanilla HTML/CSS/JS** (no build step); GSAP + Lenis vendored for offline reliability.
+- **PostgreSQL** — Cloud SQL in prod (unix socket), local Postgres in dev.
+- **Gemini 3.8-flash via Vertex AI** (ADC, no API key), location `global`.
+- **Deploy:** `gcloud run deploy scholarship-agent-42 --source . --project=… --region=asia-south1`.
+  `.env` is git-ignored and `.gcloudignore`-excluded, so prod's `DATABASE_URL` + Vertex env are
+  never clobbered by the build.
 
 ---
 
