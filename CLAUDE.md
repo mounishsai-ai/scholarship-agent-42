@@ -53,6 +53,6 @@ disbursements against fees. Runs alone today; plugs into the platform by changin
 Prefer a quick local look first; ask before deploying if unsure.
 
 ## Git
-Commit granularly, alternating the two teammates (Mounish Sai `mounishsai.ai@gmail.com`,
-Ch. V. K. Ranjith Kumar `vu.241fa04806@gmail.com`), each ending with the Claude co-author trailer.
-Repo: https://github.com/mounishsai-ai/scholarship-agent-42
+Repo: https://github.com/mounishsai-ai/scholarship-agent-42 · Team: Mounish Sai
+(`mounishsai.ai@gmail.com`), Ch. V. K. Ranjith Kumar (`vu.241fa04806@gmail.com`).
+End commit messages with the Claude co-author trailer.
