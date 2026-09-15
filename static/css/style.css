@@ -276,7 +276,7 @@ a { color: inherit; }
 
 /* ---------- Tabs (sticky so switching never makes you scroll back) ---------- */
 .tabs {
-  position: sticky; top: 0; z-index: 40;
+  position: sticky; top: var(--topbar-h, 80px); z-index: 20;
   display: flex; gap: 4px; padding: 11px clamp(16px, 4vw, 32px) 0; flex-wrap: wrap;
   max-width: 1240px; margin: 0 auto; width: 100%;
 }
@@ -539,17 +539,16 @@ td b { color: var(--indigo); }
   display: inline-flex; align-items: center; gap: 10px;
 }
 .cl-bot {
-  position: relative; width: 76px; height: 90px;
-  display: grid; place-items: end center; flex-shrink: 0;
-  animation: clBob 3.6s ease-in-out infinite;
+  position: relative; width: 80px; height: 80px;
+  display: grid; place-items: center; flex-shrink: 0;
 }
-.cl-bot::before {  /* glowing aura disc + pulsing ring behind the robot */
-  content: ""; position: absolute; bottom: 4px; left: 50%; width: 62px; height: 62px;
+.cl-bot::before {  /* glowing aura disc behind the 3D robot */
+  content: ""; position: absolute; bottom: 8px; left: 50%; width: 60px; height: 60px;
   transform: translateX(-50%); border-radius: 50%;
-  background: radial-gradient(circle, rgba(79,132,255,.6), rgba(28,72,201,0) 70%);
+  background: radial-gradient(circle, rgba(79,132,255,.55), rgba(28,72,201,0) 70%);
   box-shadow: 0 0 0 0 rgba(47,109,246,.5); animation: clRing 2.8s ease-out infinite;
 }
-.cl-bot svg { position: relative; z-index: 1; filter: drop-shadow(0 8px 12px rgba(4,10,30,.4)); }
+.cl-3d { position: relative; z-index: 1; width: 80px; height: 80px; display: block; filter: drop-shadow(0 8px 12px rgba(4,10,30,.4)); }
 .cl-arm { transform-box: view-box; transform-origin: 75px 54px; animation: clWaveArm 3.2s ease-in-out infinite; }
 .cl-label {
   background: var(--navy); color: #fff; font-family: var(--font-alt); font-weight: 700;

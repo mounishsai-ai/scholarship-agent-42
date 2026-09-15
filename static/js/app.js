@@ -165,6 +165,17 @@ async function loadHero() {
   }
 }
 
+// Keep the sticky tab bar pinned just below the (variable-height) header,
+// so the two never overlap when you scroll.
+(function () {
+  const tb = document.querySelector(".topbar");
+  if (!tb) return;
+  const set = () => document.documentElement.style.setProperty("--topbar-h", tb.offsetHeight + "px");
+  set();
+  window.addEventListener("resize", set);
+  window.addEventListener("load", set);
+})();
+
 // ------------------------------------------------------------------ tabs
 const loaders = {};
 const TAB_ORDER = $$(".tab").map(t => t.dataset.tab);

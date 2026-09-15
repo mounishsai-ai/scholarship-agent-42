@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=11" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=12" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
 </head>
 <body>
@@ -121,27 +121,8 @@
     <!-- Signature: the coverage-gap meter + AURA -->
     <div class="hero-visual" data-reveal>
       <div class="mascot" aria-hidden="true">
-        <svg viewBox="0 0 120 120" width="96" height="96" role="img" aria-label="AURA, the Scholarship Agent">
-          <ellipse cx="60" cy="108" rx="34" ry="6" fill="#12224e" opacity="0.12"/>
-          <rect x="26" y="44" width="68" height="56" rx="18" fill="#2f6df6"/>
-          <rect x="26" y="44" width="68" height="56" rx="18" fill="url(#bujiG)"/>
-          <rect x="36" y="58" width="20" height="22" rx="10" fill="#eaf1ff"/>
-          <rect x="64" y="58" width="20" height="22" rx="10" fill="#eaf1ff"/>
-          <circle class="buji-eye" cx="46" cy="69" r="5.5" fill="#12224e"/>
-          <circle class="buji-eye" cx="74" cy="69" r="5.5" fill="#12224e"/>
-          <rect x="50" y="88" width="20" height="4" rx="2" fill="#eaf1ff" opacity="0.85"/>
-          <path d="M18 38 L60 22 L102 38 L60 54 Z" fill="#12224e"/>
-          <rect x="57" y="26" width="6" height="20" rx="3" fill="#12224e"/>
-          <circle cx="60" cy="24" r="6" fill="#e8930c"/>
-          <path d="M96 40 q10 2 10 12" stroke="#12224e" stroke-width="4" fill="none" stroke-linecap="round"/>
-          <circle cx="106" cy="54" r="4" fill="#e8930c"/>
-          <defs>
-            <linearGradient id="bujiG" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#ffffff" stop-opacity="0.18"/>
-              <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
-            </linearGradient>
-          </defs>
-        </svg>
+        <img class="mascot-3d" src="{{ url_for('static', filename='img/robot.svg') }}?v=1"
+             alt="AURA, the Scholarship Agent" width="180" height="180" />
       </div>
 
       <div class="meter-card" id="coverage-meter">
