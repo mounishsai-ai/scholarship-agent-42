@@ -94,7 +94,7 @@ a { color: inherit; text-decoration: none; }
 .nav {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; gap: 20px;
-  height: 68px; padding-inline: clamp(16px, 5vw, 40px);
+  min-height: 79px; padding-inline: clamp(16px, 5vw, 40px);
   background: rgba(255,255,255,.82);
   backdrop-filter: saturate(140%) blur(12px);
   border-bottom: 1px solid transparent;
@@ -102,7 +102,7 @@ a { color: inherit; text-decoration: none; }
 }
 .nav.scrolled { border-bottom-color: var(--line); box-shadow: 0 6px 24px rgba(18,34,78,.06); }
 .nav-brand { display: flex; align-items: center; gap: 10px; }
-.nav-logo { height: 44px; width: auto; }
+.nav-logo { height: 52px; width: auto; }
 .nav-mark { display: inline-flex; }
 .nav-name { font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--indigo); line-height: 1; display: flex; flex-direction: column; gap: 2px; }
 .nav-name-sub { font-family: var(--font-body); font-size: 10.5px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
