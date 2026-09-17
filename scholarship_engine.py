@@ -69,6 +69,7 @@ SELECT
     p.programme_code,
     p.department_code,
     p.current_year_of_study        AS year_of_study,
+    p.batch_label,
     p.cgpa,
     p.backlog_count,
     p.attendance_pct,
@@ -91,6 +92,7 @@ def _facts_row_to_dict(row: dict) -> dict:
         "programme_code": row["programme_code"],
         "department_code": row["department_code"],
         "year_of_study": row["year_of_study"],
+        "batch_label": row["batch_label"],
         "cgpa": _jsonable(row["cgpa"]),
         "backlog_count": row["backlog_count"],
         "attendance_pct": _jsonable(row["attendance_pct"]),
@@ -101,10 +103,21 @@ def _facts_row_to_dict(row: dict) -> dict:
     }
 
 
+# The CSE cohort this agent serves: every batch, register numbers like 23CSE001.
+COHORT_SQL = "p.roll_no ~ '^[0-9]{2}CSE[0-9]{3}$'"
+
+
 def get_students(conn) -> list[dict]:
     with conn.cursor() as cur:
-        cur.execute(STUDENT_FACTS_SQL + " WHERE p.roll_no LIKE '23CSE%' ORDER BY p.roll_no")
+        cur.execute(STUDENT_FACTS_SQL + " WHERE " + COHORT_SQL + " ORDER BY p.roll_no")
         return [_facts_row_to_dict(r) for r in cur.fetchall()]
+
+
+def get_student_by_roll(conn, roll_no: str) -> dict | None:
+    with conn.cursor() as cur:
+        cur.execute(STUDENT_FACTS_SQL + " WHERE p.roll_no = %s", ((roll_no or "").upper(),))
+        row = cur.fetchone()
+    return _facts_row_to_dict(row) if row else None
 
 
 def get_facts(conn, student_id: str) -> dict | None:
@@ -282,45 +295,99 @@ def _persist_eligibility(conn, scheme_id, student_id, verdict):
         )
 
 
-def match_matrix() -> dict:
-    """The full students x schemes eligibility matrix."""
+PIPELINE_STATUSES = ("SUBMITTED", "INSTITUTION_VERIFIED")
+COVERED_STATUSES = ("SANCTIONED", "DISBURSED")
+
+
+def _application_index(conn) -> dict:
+    """(student_id, scheme_id) -> application status, in one query."""
+    with conn.cursor() as cur:
+        cur.execute("""SELECT student_id, scholarship_scheme_id, status
+                       FROM finance.scholarship_application
+                       WHERE academic_year_id = %s""", (ACADEMIC_YEAR_ID,))
+        return {(str(r["student_id"]), str(r["scholarship_scheme_id"])): r["status"]
+                for r in cur.fetchall()}
+
+
+def cell_state(is_eligible: bool, app_status: str | None) -> str:
+    """Where one student x scheme pair stands: the eligibility → claim ladder."""
+    if app_status in COVERED_STATUSES:
+        return "CLAIMED"
+    if app_status in PIPELINE_STATUSES:
+        return "APPLIED"
+    if app_status == "REJECTED":
+        return "REJECTED"
+    return "ELIGIBLE" if is_eligible else "NOT_ELIGIBLE"
+
+
+def _slim_rules(criteria_result: list[dict]) -> list[dict]:
+    # Only what the rule trace shows; keeps the 1000-student matrix payload small.
+    return [{"field_label": r["field_label"], "op_label": r["op_label"],
+             "expected": r["expected"], "actual": r["actual"], "passed": r["passed"]}
+            for r in criteria_result]
+
+
+def match_matrix(only_roll: str | None = None) -> dict:
+    """The full students x schemes eligibility matrix. Each cell carries the rule
+    trace and where the pair stands: not eligible / eligible / applied / claimed."""
     with get_conn() as conn:
-        students = get_students(conn)
+        if only_roll:
+            one = get_student_by_roll(conn, only_roll)
+            students = [one] if one else []
+        else:
+            students = get_students(conn)
         schemes = get_schemes(conn)
-        run_id = start_run(conn, "USER", {"scope": "all_students"},
-                           "Build eligibility matrix for all students")
+        apps = _application_index(conn)
+        run_id = start_run(conn, "USER",
+                           {"scope": "one_student" if only_roll else "all_students"},
+                           f"Build eligibility matrix for {only_roll}" if only_roll
+                           else "Build eligibility matrix for all students")
         record_input(conn, run_id, "people", "v_student_profile", len(students))
         record_input(conn, run_id, "finance", "scholarship_scheme", len(schemes))
+        record_input(conn, run_id, "finance", "scholarship_application", len(apps))
         rows = []
         eligible_cells = 0
+        state_counts: dict[str, int] = {}
         for facts in students:
             cells = []
             for scheme in schemes:
                 verdict = evaluate(facts, scheme["eligibility_criteria"])
                 if verdict["is_eligible"]:
                     eligible_cells += 1
+                status = apps.get((facts["student_id"], scheme["scholarship_scheme_id"]))
+                state = cell_state(verdict["is_eligible"], status)
+                state_counts[state] = state_counts.get(state, 0) + 1
                 cells.append({
                     "scheme_code": scheme["code"],
                     "is_eligible": verdict["is_eligible"],
-                    "criteria_result": verdict["criteria_result"],
-                    "reason": _reason_line(facts, scheme, verdict),
+                    "state": state,
+                    "app_status": status,
+                    "criteria_result": _slim_rules(verdict["criteria_result"]),
                 })
             rows.append({"student": facts, "cells": cells})
         write_output(conn, run_id, "REPORT",
                      {"students": len(students), "schemes": len(schemes),
-                      "eligible_cells": eligible_cells},
+                      "eligible_cells": eligible_cells, "states": state_counts},
                      f"Evaluated {len(students)} students against {len(schemes)} schemes "
                      f"({eligible_cells} eligible matches).")
         finish_run(conn, run_id)
-        return {"schemes": schemes, "rows": rows, "run_id": run_id}
+        return {"schemes": schemes, "rows": rows, "run_id": run_id,
+                "student_count": len(students), "eligible_cells": eligible_cells,
+                "states": state_counts}
 
 
 def renewal_risk() -> dict:
-    """Check every live scholarship against its renewal rules; raise risk flags."""
+    """Check every live scholarship against its renewal rules; raise risk flags.
+
+    Batched for a 1000-student cohort: one query for the awards, one for every
+    student's facts, then bulk writes. Risk rows are recorded once per award per
+    day and a flag is raised only if that award has no open flag yet, so a page
+    refresh never multiplies the audit trail."""
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT app.scholarship_application_id, app.student_id, app.status,
+                          app.sanctioned_amount,
                           sc.name AS scheme_name, sc.code AS scheme_code,
                           sc.renewal_criteria
                    FROM finance.scholarship_application app
@@ -329,20 +396,26 @@ def renewal_risk() -> dict:
                    WHERE app.status IN ('SANCTIONED','DISBURSED')
                      AND sc.renewal_required = true""")
             live = cur.fetchall()
+        facts_by_id = {s["student_id"]: s for s in get_students(conn)}
 
         run_id = start_run(conn, "SCHEDULED", {"scope": "live_scholarships"},
                            "Assess renewal risk for all live scholarships")
         record_input(conn, run_id, "finance", "scholarship_application", len(live))
-        results = []
+        record_input(conn, run_id, "people", "v_student_profile", len(facts_by_id))
+        results, risk_rows, flag_rows = [], [], []
         for app in live:
-            facts = get_facts(conn, str(app["student_id"]))
+            facts = facts_by_id.get(str(app["student_id"]))
+            if not facts:
+                facts = get_facts(conn, str(app["student_id"]))
+                if not facts:
+                    continue
             verdict = evaluate(facts, app["renewal_criteria"])
             level = _risk_level(verdict)
-            _persist_renewal_risk(conn, app["scholarship_application_id"], facts, verdict, level)
-            flagged = False
-            if level in ("AT_RISK", "LIKELY_LOSS"):
-                _raise_scholarship_flag(conn, run_id, facts, app, verdict, level)
-                flagged = True
+            risk_rows.append(_renewal_risk_params(app["scholarship_application_id"],
+                                                  facts, verdict, level))
+            flagged = level in ("AT_RISK", "LIKELY_LOSS")
+            if flagged:
+                flag_rows.append(_scholarship_flag_params(run_id, facts, app, verdict, level))
             reason = (f"{facts['full_name']} ({facts['roll_no']}) - {app['scheme_name']}: "
                       f"renewal risk {level}. " +
                       ("; ".join(f"{r['field_label']} {r['actual']} needs "
@@ -352,9 +425,16 @@ def renewal_risk() -> dict:
                 "application_id": str(app["scholarship_application_id"]),
                 "student": facts, "scheme_name": app["scheme_name"],
                 "scheme_code": app["scheme_code"], "risk_level": level,
+                "sanctioned_amount": _jsonable(app["sanctioned_amount"]),
                 "criteria_result": verdict["criteria_result"],
                 "reason": reason, "flag_raised": flagged,
             })
+        _persist_renewal_risks(conn, risk_rows)
+        _raise_scholarship_flags(conn, flag_rows)
+        # Most urgent first, so a long list still opens on the awards that need a human.
+        order = {"LIKELY_LOSS": 0, "AT_RISK": 1, "WATCH": 2, "NONE": 3}
+        results.sort(key=lambda r: (order.get(r["risk_level"], 9),
+                                    r["student"].get("attendance_pct") or 0))
         at_risk = [r for r in results if r["risk_level"] in ("AT_RISK", "LIKELY_LOSS")]
         write_output(conn, run_id, "ALERT",
                      {"assessed": len(results), "at_risk": len(at_risk)},
@@ -380,20 +460,30 @@ def _risk_level(verdict: dict) -> str:
     return "AT_RISK"
 
 
-def _persist_renewal_risk(conn, application_id, facts, verdict, level):
+def _renewal_risk_params(application_id, facts, verdict, level):
+    return (application_id, facts.get("attendance_pct"), facts.get("cgpa"),
+            Jsonb(verdict["unmet"]), level, level, application_id)
+
+
+def _persist_renewal_risks(conn, rows):
+    """One assessment row per award per day (a re-check the same day is a no-op)."""
+    if not rows:
+        return
     with conn.cursor() as cur:
-        cur.execute(
+        cur.executemany(
             """INSERT INTO finance.scholarship_renewal_risk
                  (scholarship_application_id, assessed_on, attendance_pct, cgpa,
                   criteria_at_risk, risk_level, alerted_at)
-               VALUES (%s, current_date, %s, %s, %s, %s,
-                       CASE WHEN %s IN ('AT_RISK','LIKELY_LOSS') THEN now() ELSE NULL END)""",
-            (application_id, facts.get("attendance_pct"), facts.get("cgpa"),
-             Jsonb(verdict["unmet"]), level, level),
+               SELECT %s::uuid, current_date, %s::numeric, %s::numeric, %s, %s::text,
+                      CASE WHEN %s::text IN ('AT_RISK','LIKELY_LOSS') THEN now() ELSE NULL END
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM finance.scholarship_renewal_risk r
+                 WHERE r.scholarship_application_id = %s::uuid AND r.assessed_on = current_date)""",
+            rows,
         )
 
 
-def _raise_scholarship_flag(conn, run_id, facts, app, verdict, level):
+def _scholarship_flag_params(run_id, facts, app, verdict, level):
     signals = {"attendance_pct": facts.get("attendance_pct"),
                "cgpa": facts.get("cgpa"),
                "unmet_rules": verdict["unmet"],
@@ -404,18 +494,29 @@ def _raise_scholarship_flag(conn, run_id, facts, app, verdict, level):
         action = (f"Attendance is {first_unmet['actual']}%; needs "
                   f"{first_unmet['expected']}%. Arrange condonation / extra classes now.")
     severity = "CRITICAL" if level == "LIKELY_LOSS" else "HIGH"
+    summary = f"{app['scheme_name']} renewal at {level} for {facts['roll_no']}"
+    return (AGENT_ID, run_id, facts["student_id"], severity, facts.get("attendance_pct"),
+            summary, Jsonb(signals), action, AGENT_USER_ID or None,
+            facts["student_id"], summary)
+
+
+def _raise_scholarship_flags(conn, rows):
+    """Raise a SCHOLARSHIP_RISK flag unless the same concern is already open."""
+    if not rows:
+        return
     with conn.cursor() as cur:
-        cur.execute(
+        cur.executemany(
             """INSERT INTO agentops.risk_flag
                  (agent_id, agent_run_id, subject_type, student_id, flag_type, severity,
                   observed_value, deviation_summary, contributing_signals,
                   suggested_first_action, responder_user_id, respond_by)
-               VALUES (%s, %s, 'STUDENT', %s, 'SCHOLARSHIP_RISK', %s, %s, %s, %s, %s, %s,
-                       now() + interval '5 days')""",
-            (AGENT_ID, run_id, facts["student_id"], severity,
-             facts.get("attendance_pct"),
-             f"{app['scheme_name']} renewal at {level} for {facts['roll_no']}",
-             Jsonb(signals), action, AGENT_USER_ID or None),
+               SELECT %s::uuid, %s::uuid, 'STUDENT', %s::uuid, 'SCHOLARSHIP_RISK', %s::text,
+                      %s::numeric, %s::text, %s, %s::text, %s::uuid, now() + interval '5 days'
+               WHERE NOT EXISTS (
+                 SELECT 1 FROM agentops.risk_flag f
+                 WHERE f.student_id = %s::uuid AND f.flag_type = 'SCHOLARSHIP_RISK'
+                   AND f.status = 'OPEN' AND f.deviation_summary = %s::text)""",
+            rows,
         )
 
 
@@ -469,6 +570,9 @@ def reconcile() -> dict:
                 "recommend_suppress": recommend_suppress,
                 "recommendation": recommendation,
             })
+        # Anything needing a human first; the rest are reconciled and quiet.
+        results.sort(key=lambda r: (not r["recommend_suppress"], not r["active_reminder"],
+                                    r["roll_no"]))
         write_output(conn, run_id, "RECOMMENDATION",
                      {"reconciled": len(results), "reminders_to_suppress": suppress_count},
                      f"Reconciled {len(results)} live scholarships; recommended suppressing "
@@ -504,7 +608,8 @@ def suppress_reminder(reminder_dispatch_id: str, reviewer_note: str = "") -> dic
 def applications() -> list[dict]:
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
-            """SELECT app.scholarship_application_id, st.roll_no, per.full_name,
+            """SELECT app.scholarship_application_id, app.student_id, st.roll_no, per.full_name,
+                      st.current_year_of_study AS year_of_study,
                       sc.name AS scheme_name, sc.code AS scheme_code, sc.provider_type,
                       app.status, app.external_application_no, app.applied_on,
                       app.sanctioned_amount, app.disbursed_amount, app.disbursed_on,
@@ -513,10 +618,12 @@ def applications() -> list[dict]:
                JOIN finance.scholarship_scheme sc ON sc.scholarship_scheme_id = app.scholarship_scheme_id
                JOIN people.student st ON st.student_id = app.student_id
                JOIN people.person per ON per.person_id = st.person_id
-               ORDER BY app.applied_on DESC NULLS LAST""")
+               WHERE st.roll_no ~ '^[0-9]{2}CSE[0-9]{3}$'
+               ORDER BY app.applied_on DESC NULLS LAST, st.roll_no""")
         rows = cur.fetchall()
     for r in rows:
         r["scholarship_application_id"] = str(r["scholarship_application_id"])
+        r["student_id"] = str(r["student_id"])
         r["sanctioned_amount"] = _jsonable(r["sanctioned_amount"])
         r["disbursed_amount"] = _jsonable(r["disbursed_amount"])
         for d in ("applied_on", "disbursed_on"):
@@ -529,28 +636,61 @@ def coverage_report() -> dict:
     with get_conn() as conn:
         students = get_students(conn)
         schemes = get_schemes(conn)
+        apps = _application_index(conn)
         per_scheme = []
         total_eligible = 0
         total_covered = 0
+        # per student: which schemes they qualify for, and how far each got
+        ladder = {s["student_id"]: {} for s in students}
         for scheme in schemes:
-            eligible = sum(1 for f in students
-                           if evaluate(f, scheme["eligibility_criteria"])["is_eligible"])
-            with conn.cursor() as cur:
-                cur.execute(
-                    """SELECT count(*) FILTER (WHERE status IN
-                                ('SUBMITTED','INSTITUTION_VERIFIED','SANCTIONED','DISBURSED')) AS applied,
-                              count(*) FILTER (WHERE status IN ('SANCTIONED','DISBURSED')) AS covered
-                       FROM finance.scholarship_application
-                       WHERE scholarship_scheme_id = %s""",
-                    (scheme["scholarship_scheme_id"],))
-                c = cur.fetchone()
+            sid = scheme["scholarship_scheme_id"]
+            eligible = applied = covered = 0
+            states = {"CLAIMED": 0, "APPLIED": 0, "REJECTED": 0, "ELIGIBLE": 0}
+            for f in students:
+                status = apps.get((f["student_id"], sid))
+                if status in PIPELINE_STATUSES + COVERED_STATUSES:
+                    applied += 1
+                if status in COVERED_STATUSES:
+                    covered += 1
+                if not evaluate(f, scheme["eligibility_criteria"])["is_eligible"]:
+                    continue
+                eligible += 1
+                state = cell_state(True, status)
+                states[state] += 1
+                ladder[f["student_id"]][sid] = state
             total_eligible += eligible
-            total_covered += c["covered"]
+            total_covered += covered
             per_scheme.append({
                 "scheme_code": scheme["code"], "scheme_name": scheme["name"],
-                "eligible": eligible, "applied": c["applied"], "covered": c["covered"],
-                "gap": eligible - c["covered"],
+                "benefit_amount": scheme["benefit_amount"],
+                "eligible": eligible, "applied": applied, "covered": covered,
+                "gap": eligible - covered,
+                # the eligible pairs only, split by where each one stands (sums to eligible)
+                "eligible_claimed": states["CLAIMED"], "eligible_applied": states["APPLIED"],
+                "eligible_rejected": states["REJECTED"], "eligible_unapplied": states["ELIGIBLE"],
             })
+
+        # Student-level coverage: how partial is it, person by person?
+        buckets = {"FULL": 0, "PARTIAL": 0, "IN_PROGRESS": 0, "UNCLAIMED": 0, "NOT_ELIGIBLE": 0}
+        by_batch: dict[str, dict] = {}
+        student_state = {}
+        for f in students:
+            got = set(ladder[f["student_id"]].values())
+            if not got:
+                b = "NOT_ELIGIBLE"
+            elif "CLAIMED" in got:
+                b = "PARTIAL" if "ELIGIBLE" in got else "FULL"
+            elif "APPLIED" in got:
+                b = "IN_PROGRESS"
+            else:
+                b = "UNCLAIMED"
+            buckets[b] += 1
+            student_state[f["roll_no"]] = b
+            key = f.get("batch_label") or f"Year {f.get('year_of_study')}"
+            row = by_batch.setdefault(key, {"batch": key, "year_of_study": f.get("year_of_study"),
+                                            "students": 0, **{k: 0 for k in buckets}})
+            row["students"] += 1
+            row[b] += 1
         with conn.cursor() as cur:
             cur.execute(
                 """SELECT rejection_reason, count(*) AS n
@@ -564,6 +704,10 @@ def coverage_report() -> dict:
             "total_covered": total_covered,
             "coverage_gap": total_eligible - total_covered,
             "rejections": rejections,
+            "students": {"total": len(students), **buckets},
+            # roll -> bucket, in roll order: drives the one-square-per-student grid
+            "student_states": [[r, student_state[r]] for r in sorted(student_state)],
+            "by_batch": sorted(by_batch.values(), key=lambda x: x["batch"]),
         }
 
 
@@ -576,8 +720,9 @@ def open_flags() -> list[dict]:
                FROM agentops.risk_flag f
                LEFT JOIN people.student st ON st.student_id = f.student_id
                LEFT JOIN people.person per ON per.person_id = st.person_id
-               WHERE f.flag_type = 'SCHOLARSHIP_RISK'
-               ORDER BY f.raised_at DESC""")
+               WHERE f.flag_type = 'SCHOLARSHIP_RISK' AND f.status = 'OPEN'
+               ORDER BY f.raised_at DESC
+               LIMIT 200""")
         rows = cur.fetchall()
     for r in rows:
         r["risk_flag_id"] = str(r["risk_flag_id"])
@@ -585,19 +730,27 @@ def open_flags() -> list[dict]:
     return rows
 
 
-def pending_approvals() -> list[dict]:
+def pending_approvals(limit: int = 50) -> dict:
+    """The newest items waiting on a human, plus how many are waiting in total."""
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
             """SELECT o.agent_output_id, o.output_type, o.reasoning_summary, o.payload,
                       o.created_at
                FROM agentops.agent_output o
-               WHERE o.approval_status = 'PENDING'
-               ORDER BY o.created_at DESC""")
+               JOIN agentops.agent_run r ON r.agent_run_id = o.agent_run_id
+               WHERE o.approval_status = 'PENDING' AND r.agent_id = %s
+               ORDER BY o.created_at DESC
+               LIMIT %s""", (AGENT_ID, limit))
         rows = cur.fetchall()
+        cur.execute(
+            """SELECT count(*) AS n FROM agentops.agent_output o
+               JOIN agentops.agent_run r ON r.agent_run_id = o.agent_run_id
+               WHERE o.approval_status = 'PENDING' AND r.agent_id = %s""", (AGENT_ID,))
+        total = cur.fetchone()["n"]
     for r in rows:
         r["agent_output_id"] = str(r["agent_output_id"])
         r["created_at"] = r["created_at"].isoformat() if r["created_at"] else None
-    return rows
+    return {"approvals": rows, "total": total}
 
 
 def approve_output(agent_output_id: str, decision: str, note: str = "") -> dict:
@@ -744,7 +897,7 @@ def integration_report() -> dict:
     records — proof that answers trace back to database records."""
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute("""
-            SELECT (SELECT count(*) FROM people.student WHERE roll_no LIKE '23CSE%%') AS students,
+            SELECT (SELECT count(*) FROM people.student WHERE roll_no ~ '^[0-9]{2}CSE[0-9]{3}$') AS students,
                    (SELECT count(*) FROM finance.scholarship_scheme)      AS schemes,
                    (SELECT count(*) FROM attendance.attendance_summary)   AS attendance_rows,
                    (SELECT count(*) FROM assessment.term_result)          AS term_results,
