@@ -61,7 +61,7 @@
       "Coverage: " + covered + " of " + eligible + " eligible matches are covered; gap of " + gap);
     if (live) {
       var badge = document.getElementById("meter-source");
-      if (badge) { badge.textContent = "live · seeded DB"; badge.classList.add("live"); }
+      if (badge) { badge.textContent = "live · platform DB"; badge.classList.add("live"); }
     }
   }
   function setNum(id, val) {
@@ -83,20 +83,26 @@
     requestAnimationFrame(step);
   }
 
-  // Static baseline (matches seeded DB); upgrade if fetch succeeds.
-  // Gated so the count-up is actually seen (not run behind the consent wall).
-  onReady(function () { drawMeter(29, 4, false); });
-
+  // Live numbers only — the meter shows dashes until the database answers, so it
+  // never flashes a figure that isn't true. Gated so the count-up is actually seen.
+  function meterOffline() {
+    var badge = document.getElementById("meter-source");
+    if (badge) badge.textContent = "offline";
+  }
   fetch("/api/coverage")
     .then(function (r) { return r.json(); })
     .then(function (d) {
-      if (!d || d.error || typeof d.total_eligible !== "number") return;
+      if (!d || d.error || typeof d.total_eligible !== "number") { meterOffline(); return; }
       onReady(function () {
+        var k = document.getElementById("meter-kicker");
+        if (k && d.students && d.students.total) {
+          k.textContent = "Live coverage across " + d.students.total.toLocaleString("en-IN") + " CSE students";
+        }
         drawMeter(d.total_eligible, d.total_covered, true);
         renderCoverageRows(d.per_scheme);
       });
     })
-    .catch(function () { /* offline / no DB: keep static numbers */ });
+    .catch(meterOffline);
 
   function renderCoverageRows(per) {
     if (!Array.isArray(per) || !per.length) return;
@@ -201,6 +207,28 @@
   document.querySelectorAll("[data-open-signin]").forEach(function (b) {
     b.addEventListener("click", openModal);
   });
+
+  // A failed register-number sign-in comes back as /?signin=regid&error=...:
+  // reopen the modal on that tab with the number kept and a plain message.
+  (function () {
+    var q = new URLSearchParams(window.location.search);
+    if (q.get("signin") !== "regid") return;
+    var tab = document.querySelector('.method-tab[data-method="regid"]');
+    if (tab) tab.click();
+    var form = document.querySelector('[data-method-form="regid"]');
+    var err = document.getElementById("regid-error");
+    if (form && q.get("regno")) form.querySelector('[name="identifier"]').value = q.get("regno");
+    if (err && q.get("error")) {
+      err.textContent = q.get("error") === "unavailable"
+        ? "Sign-in is unavailable right now — the database did not answer. Please try again."
+        : "That register number and password don't match. First time? Your password is your register number.";
+      err.hidden = false;
+    }
+    openModal();
+    var pw = form && form.querySelector('[name="secret"]');
+    if (pw) setTimeout(function () { pw.focus(); }, 60);
+    if (window.history && history.replaceState) history.replaceState(null, "", window.location.pathname);
+  })();
   document.querySelectorAll("[data-close-signin]").forEach(function (b) {
     b.addEventListener("click", closeModal);
   });

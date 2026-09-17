@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=16" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=17" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
 </head>
 <body>
@@ -131,24 +131,24 @@
 
       <div class="meter-card" id="coverage-meter">
         <div class="meter-head">
-          <span class="meter-kicker">Live coverage across 20 students</span>
-          <span class="meter-badge" id="meter-source">representative</span>
+          <span class="meter-kicker" id="meter-kicker">Live coverage across the CSE cohort</span>
+          <span class="meter-badge" id="meter-source">connecting…</span>
         </div>
         <div class="meter-stats">
           <div class="mstat">
-            <div class="mstat-num" id="stat-eligible" data-count="29">29</div>
+            <div class="mstat-num" id="stat-eligible">—</div>
             <div class="mstat-lbl">Eligible matches</div>
           </div>
           <div class="mstat">
-            <div class="mstat-num accent-blue" id="stat-covered" data-count="4">4</div>
+            <div class="mstat-num accent-blue" id="stat-covered">—</div>
             <div class="mstat-lbl">Actually covered</div>
           </div>
           <div class="mstat">
-            <div class="mstat-num accent-gold" id="stat-gap" data-count="25">25</div>
+            <div class="mstat-num accent-gold" id="stat-gap">—</div>
             <div class="mstat-lbl">The gap Agent&nbsp;42 closes</div>
           </div>
         </div>
-        <div class="meter-bar" role="img" aria-label="Coverage gap: 4 of 29 eligible matches are covered">
+        <div class="meter-bar" role="img" aria-label="Coverage across the CSE cohort, loading">
           <div class="meter-fill" id="meter-fill" style="width:0%"></div>
           <div class="meter-gap-label" id="meter-gap-label">gap</div>
         </div>
@@ -178,14 +178,14 @@
     </div>
 
     <div class="coverage-cols" id="coverage-cols" data-reveal>
-      <!-- filled by landing.js from /api/coverage, with a static fallback baked in -->
+      <!-- filled by landing.js from /api/coverage -->
       <div class="cov-row cov-head">
         <span>Scheme</span><span>Eligible</span><span>Covered</span><span>Gap</span>
       </div>
-      <div class="cov-row"><span>Post-Matric Scholarship for SC/ST</span><span>7</span><span class="c-ok">2</span><span class="c-gap">5</span></div>
-      <div class="cov-row"><span>Pragati Scholarship for Girl Students</span><span>10</span><span class="c-ok">0</span><span class="c-gap">10</span></div>
-      <div class="cov-row"><span>State Merit-cum-Means Scholarship</span><span>9</span><span class="c-ok">1</span><span class="c-gap">8</span></div>
-      <div class="cov-row"><span>EWS Tuition Fee Concession</span><span>3</span><span class="c-ok">1</span><span class="c-gap">2</span></div>
+      <div class="cov-row"><span>Post-Matric Scholarship for SC/ST</span><span>—</span><span class="c-ok">—</span><span class="c-gap">—</span></div>
+      <div class="cov-row"><span>Pragati Scholarship for Girl Students</span><span>—</span><span class="c-ok">—</span><span class="c-gap">—</span></div>
+      <div class="cov-row"><span>State Merit-cum-Means Scholarship</span><span>—</span><span class="c-ok">—</span><span class="c-gap">—</span></div>
+      <div class="cov-row"><span>EWS Tuition Fee Concession</span><span>—</span><span class="c-ok">—</span><span class="c-gap">—</span></div>
     </div>
   </div>
 </section>
@@ -485,10 +485,13 @@
     </form>
     <form method="post" action="{{ url_for('login') }}" class="method-form" data-method-form="regid" hidden>
       <input type="hidden" name="mode" value="regid" />
+      <div class="signin-error" id="regid-error" role="alert" hidden></div>
       <label>Register number</label>
-      <input name="identifier" type="text" placeholder="23CSE001" required />
+      <input name="identifier" type="text" placeholder="23CSE001" autocomplete="username"
+             autocapitalize="characters" spellcheck="false" required />
       <label>Password</label>
-      <input name="secret" type="password" placeholder="••••••••" />
+      <input name="secret" type="password" placeholder="First time? Use your register number"
+             autocomplete="current-password" required />
       <button class="btn btn-primary btn-block" type="submit">Continue</button>
     </form>
     <form method="post" action="{{ url_for('login') }}" class="method-form" data-method-form="empid" hidden>
@@ -514,7 +517,7 @@
         <button class="btn btn-ghost btn-block" type="submit">Continue as guest</button>
       </form>
     </div>
-    <p class="modal-fineprint">Demo sign-in — no credentials are checked or stored.</p>
+    <p class="modal-fineprint"><b>Register No</b> sign-in is checked against the platform database — your first password is your register number, and you can change it from your profile. Email, phone, employee ID and Google are demo entry points.</p>
   </div>
 </div>
 
@@ -569,7 +572,7 @@
 <script src="{{ url_for('static', filename='vendor/gsap.min.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor/ScrollTrigger.min.js') }}"></script>
 <script src="{{ url_for('static', filename='vendor/lenis.min.js') }}"></script>
-<script src="{{ url_for('static', filename='js/landing.js') }}?v=5"></script>
+<script src="{{ url_for('static', filename='js/landing.js') }}?v=6"></script>
 <script src="{{ url_for('static', filename='js/consent.js') }}?v=3"></script>
 </body>
 </html>
