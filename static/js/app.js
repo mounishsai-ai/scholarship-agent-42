@@ -156,8 +156,10 @@ async function loadHero() {
     const [c, rec] = await Promise.all([getData("/api/coverage"), getData("/api/reconciliation")]);
     h.innerHTML = `<span class="hl" id="hero-n">0</span> scholarship matches are sitting <span class="hl-blue">unclaimed</span>.`;
     countUp($("#hero-n"), c.coverage_gap);
-    sub.innerHTML = `${c.total_eligible} eligible matches across ${role.label === "Head of Department" ? "the department" : "20 students"}, `
-      + `${c.total_covered} already covered${rec.suppress_count ? `, and ${rec.suppress_count} fee reminder(s) to suppress` : ""}. `
+    const n = (x) => Number(x || 0).toLocaleString("en-IN");
+    const cohort = (c.students && c.students.total) ? `${n(c.students.total)} students` : "the cohort";
+    sub.innerHTML = `${n(c.total_eligible)} eligible matches across ${role.label === "Head of Department" ? `the department's ${cohort}` : cohort}, `
+      + `${n(c.total_covered)} already covered${rec.suppress_count ? `, and ${rec.suppress_count} fee reminder(s) to suppress` : ""}. `
       + `Agent&nbsp;42 works the gap down, scheme by scheme.`;
   } catch (e) {
     h.textContent = "Every eligible student, every scheme — accounted for.";
@@ -195,7 +197,12 @@ function switchTab(name, opts) {
   };
   if (name === _activeTabName) { if (opts.scrollToContent) scrollToContent(); return; }
   if (_swapping) return;          // repeat clicks mid-swap are ignored, per the spec
-  const keepY = window.scrollY;   // never yank the viewport to the top on switch
+  // A new section opens at its own beginning. If the reader has scrolled down into
+  // the previous panel, bring the new one in with its top just under the pinned
+  // rail; if they're still up in the hero, leave the page exactly where it is
+  // (never yank to the page top).
+  const startY = panelStartY();
+  const keepY = Math.min(window.scrollY, startY);
   const from = TAB_ORDER.indexOf(_activeTabName), to = TAB_ORDER.indexOf(name);
   const fwd = to >= from;
   const dir = fwd ? "right" : "left";
@@ -234,10 +241,11 @@ function switchTab(name, opts) {
     cascade(panel);
 
     // Either bring the section content into view, or keep the current scroll.
-    const after = opts.scrollToContent ? scrollToContent : () => window.scrollTo(0, keepY);
+    const after = opts.scrollToContent ? scrollToContent
+      : () => { if (window.scrollY > keepY) window.scrollTo({ top: keepY, behavior: "instant" }); };
     requestAnimationFrame(after);
     const p = loaders[name] ? loaders[name]() : null;
-    if (p && p.then) p.then(() => { cascade(panel); requestAnimationFrame(after); });
+    if (p && p.then) p.then(() => { cascade(panel); if (opts.scrollToContent) requestAnimationFrame(after); });
   };
 
   if (!wrap || _prefersReduced) { commit(); return; }
@@ -247,6 +255,14 @@ function switchTab(name, opts) {
   wrap.style.animation = "panelOut" + (fwd ? "Fwd" : "Back") +
     " .22s cubic-bezier(.45,0,.9,.6) both";
   setTimeout(commit, 205);
+}
+
+// Scroll position at which the panels begin right under the sticky header + rail.
+function panelStartY() {
+  const wrap = $(".panels"), rail = $(".tabs"), top = $(".topbar");
+  if (!wrap) return 0;
+  const pinned = (top ? top.offsetHeight : 0) + (rail ? rail.offsetHeight : 0);
+  return Math.max(0, Math.round(wrap.getBoundingClientRect().top + window.scrollY - pinned));
 }
 
 // The card cascade inside a panel: 90ms apart, first one at 50ms. On a panel that
@@ -297,12 +313,12 @@ async function loadKpis() {
   const role = R();
   try {
     if (role.student) {
-      const m = await getData("/api/matrix");
+      const [m, ap, rn] = await Promise.all([
+        getData("/api/matrix"), getData("/api/applications"), getData("/api/renewal-risk"),
+      ]);
       const row = m.rows.find(x => x.student.roll_no === role.student);
       const eligible = row ? row.cells.filter(c => c.is_eligible).length : 0;
-      const ap = await getData("/api/applications");
       const myAp = ap.applications.filter(a => a.roll_no === role.student).length;
-      const rn = await getData("/api/renewal-risk");
       const myRn = rn.results.filter(x => x.student.roll_no === role.student);
       const atRisk = myRn.some(x => ["AT_RISK", "LIKELY_LOSS"].includes(x.risk_level));
       $("#kpis").innerHTML = `
@@ -314,10 +330,11 @@ async function loadKpis() {
     const [c, r, rec] = await Promise.all([
       getData("/api/coverage"), getData("/api/renewal-risk"), getData("/api/reconciliation"),
     ]);
+    const n = (x) => Number(x || 0).toLocaleString("en-IN");
     $("#kpis").innerHTML = `
-      <div class="kpi"><div class="num">${c.total_eligible}</div><div class="lbl">Eligible matches</div></div>
-      <div class="kpi good"><div class="num">${c.total_covered}</div><div class="lbl">Covered</div></div>
-      <div class="kpi bad"><div class="num">${c.coverage_gap}</div><div class="lbl">Coverage gap</div></div>
+      <div class="kpi"><div class="num">${n(c.total_eligible)}</div><div class="lbl">Eligible matches</div></div>
+      <div class="kpi good"><div class="num">${n(c.total_covered)}</div><div class="lbl">Covered</div></div>
+      <div class="kpi bad"><div class="num">${n(c.coverage_gap)}</div><div class="lbl">Coverage gap</div></div>
       <div class="kpi bad"><div class="num">${r.at_risk_count}</div><div class="lbl">Renewals at risk</div></div>
       <div class="kpi bad"><div class="num">${rec.suppress_count}</div><div class="lbl">Reminders to suppress</div></div>`;
   } catch (e) { $("#kpis").innerHTML = `<div class="note">${esc(e.message)}</div>`; }
@@ -915,12 +932,50 @@ function addMsg(text, who) {
           <div><span>Category</span><b>${esc(s.social_category || "—")}</b></div></div>`;
       } catch (e) { /* keep generic note */ }
     }
+    let pw = "";
+    if (mode === "regid") {
+      let acct = null;
+      try { acct = await api("/api/account"); } catch (e) { /* the form still works */ }
+      pw = `${acct && acct.default_password
+          ? `<div class="pm-default">You're still using your default password (your register number). Change it below.</div>` : ""}
+        <details class="pm-pw"${acct && acct.default_password ? " open" : ""}>
+          <summary>Change password</summary>
+          <form id="pm-pw-form" autocomplete="on">
+            <input type="text" name="username" value="${esc(roll || "")}" autocomplete="username" hidden>
+            <input type="password" name="current" placeholder="Current password" autocomplete="current-password" required>
+            <input type="password" name="new" placeholder="New password (6+ characters)" autocomplete="new-password" minlength="6" required>
+            <input type="password" name="confirm" placeholder="Repeat new password" autocomplete="new-password" minlength="6" required>
+            <div class="msg" id="pm-pw-msg" hidden></div>
+            <button class="btn small" type="submit">Update password</button>
+          </form>
+        </details>`;
+    }
     menu.innerHTML = `
       <div class="pm-head"><span class="pm-avatar">${esc(name[0].toUpperCase())}</span>
         <div><div class="pm-name">${esc(name)}</div>
-          <div class="pm-mode">Signed in · ${esc(mode)}</div></div></div>
+          <div class="pm-mode">Signed in · ${esc(mode === "regid" ? "register number" : mode)}</div></div></div>
       ${detail}
+      ${pw}
       <a class="pm-signout" href="/logout">Sign out</a>`;
+    const form = $("#pm-pw-form", menu);
+    if (form) form.addEventListener("submit", changePassword);
+  }
+  async function changePassword(e) {
+    e.preventDefault();
+    const f = e.target, msg = $("#pm-pw-msg", f), btn = f.querySelector("button");
+    const say = (text, ok) => { msg.textContent = text; msg.className = "msg " + (ok ? "ok" : "bad"); msg.hidden = false; };
+    if (f.new.value !== f.confirm.value) { say("The two new passwords don't match."); return; }
+    btn.disabled = true;
+    try {
+      await api("/api/account/password", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ current: f.current.value, new: f.new.value }),
+      });
+      f.reset();
+      say("Password updated. Use it the next time you sign in.", true);
+      const nudge = $(".pm-default", menu); if (nudge) nudge.remove();
+    } catch (err) { say(err.message); }
+    finally { btn.disabled = false; }
   }
   btn.addEventListener("click", async (e) => {
     e.stopPropagation();
@@ -934,7 +989,11 @@ function addMsg(text, who) {
 
 // ------------------------------------------------------------------ boot
 (function initRoleContext() {
-  if (APP.student && ROLES.STUDENT) ROLES.STUDENT.student = APP.student;
+  if (APP.student && ROLES.STUDENT) {
+    ROLES.STUDENT.student = APP.student;
+    const who = ($("#profile-menu") || {}).dataset;
+    ROLES.STUDENT.scope = `Your own record only — ${APP.student}${who && who.name ? ", " + who.name : ""}.`;
+  }
   const rs = document.querySelector(".role-switch");
   if (!APP.canSwitch && ROLES[APP.role]) {
     currentRole = APP.role;                       // locked to the signed-in role
@@ -948,6 +1007,16 @@ function addMsg(text, who) {
 })();
 applyRole();
 
+(function nudgeDefaultPassword() {
+  const menu = $("#profile-menu");
+  if (!menu || menu.dataset.mode !== "regid") return;
+  api("/api/account").then(a => {
+    if (a && a.default_password) {
+      setTimeout(() => showToast("You're signed in with your default password — open your profile (top right) to change it."), 1800);
+    }
+  }).catch(() => {});
+})();
+
 // Platform status bar: fill the live DB provider and jump to Integrations.
 (function () {
   const link = document.querySelector("[data-goto-integrations]");
@@ -956,6 +1025,7 @@ applyRole();
     if (!intTab || intTab.hidden) link.style.display = "none";
     else link.addEventListener("click", (e) => { e.preventDefault(); switchTab("integrations", { scrollToContent: true }); });
   }
+  if (!APP.canSwitch && APP.role === "STUDENT") return;   // staff-only endpoint
   getData("/api/integrations").then(d => {
     const el = $("#pb-db");
     if (el && d && d.database && d.database.provider) el.textContent = d.database.provider;
