@@ -41,6 +41,67 @@ disbursements against fees. Runs alone today; plugs into the platform by changin
 - **Gemini 3.8-flash via Vertex ADC** (no API key), `GOOGLE_CLOUD_LOCATION=global`; only *phrases* chat,
   never originates a number. Works fully offline via templates.
 
+## Spec coverage (problem statement 42 → where it lives)
+1 Scheme register → Scheme Register tab; add (`POST /api/scheme`), edit for the cycle / retire / reinstate
+  (`POST /api/scheme/<code>`). 2 Match every student × scheme → `match_matrix`. 3 Notify → `notify_student` /
+  `notify_all` (deduped, drafts wait for approval). 4 Application prep → `application_pack` (checklist, pre-filled
+  data, `record_checks` format validation, window check). 5 Track + follow up stalled → `applications()`
+  (`stalled` per `STALL_DAYS`) + `draft_follow_ups`. 6 Renewal risk → `renewal_risk`. 7 Reconcile + adjust
+  ledger → `reconcile` (suppress reminders; `ledger_mismatch`) + `sync_fee_ledger` (writes
+  `fee_demand.scholarship_expected`, officer-approved). 8 Coverage / disbursement / rejection analysis →
+  `coverage_report`. Nothing decides an award: every student-affecting output waits in the approval queue.
+Known data caveat: seeded scheme windows and applications are the 2025-26 cycle, so against today's date
+windows show "closed" and pending applications show ~300+ days stalled (computed from `current_date`, honest).
+
+## Dashboard sections — exactly what each shows (staff view unless noted)
+- **Hero + KPI cards** — from `/api/coverage` + `/api/renewal-risk` + `/api/reconciliation`: coverage gap
+  (eligible matches − covered), eligible matches, covered, renewals at risk, reminders to suppress; sub-line
+  uses `students.total`. Student: schemes they qualify for, their application count, renewal status.
+- **01 Coverage** (`/api/coverage`, staff only): (a) money ledger — gap = Σ(per-scheme gap × benefit_amount),
+  identified = moved + gap, moved = covered × benefit, % moved; (b) student-by-student — one square per
+  cohort student, bucket FULL (has an award, no eligible scheme left unapplied) / PARTIAL (award + an eligible
+  scheme nobody applied to) / IN_PROGRESS (applied, nothing sanctioned) / UNCLAIMED (eligible, nothing moving
+  or only rejected) / NOT_ELIGIBLE; the big bar is over students who qualify for ≥1 scheme; per-batch bars;
+  (c) disbursement — sanctioned ₹, paid ₹, sanctioned-not-paid, avg applied→paid days, rejection rate + by
+  scheme; (d) per scheme — eligible pairs split claimed / applied / rejected / never applied, gap ₹;
+  (e) rejection reasons with counts. "Covered" = application status SANCTIONED or DISBURSED.
+- **02 Eligibility Matrix** (`/api/matrix`): ladder per scheme — Eligible (all rules pass) → Applied (eligible
+  and any application, incl. rejected) → Claimed (eligible and sanctioned/disbursed); each number filters the
+  list. List: every student × scheme cell with its state NOT_ELIGIBLE / ELIGIBLE / APPLIED / CLAIMED / REJECTED
+  (`cell_state`), searchable, filter by state / scheme / batch, 25 per page; a cell opens the rule trace
+  (each rule, the student's value, pass/fail) + "Draft notice" (eligible, not applied) + application pack.
+  "Draft notices" drafts one per eligible-unapplied pair. Student: one card per scheme with their state and
+  rule trace.
+- **03 Application Tracker** (`/api/applications` + coverage for "never applied"): stage cards Submitted →
+  Verified (INSTITUTION_VERIFIED) → Sanctioned → Paid (DISBURSED) with counts and ₹; off-ramps: rejected,
+  stalled (older than `STALL_DAYS` at its stage), eligible matches never applied (Σ `eligible_unapplied`);
+  "Draft follow-ups" for stalled cases. List rows: student, scheme + application no + applied date, 4-dot
+  stage track, stalled days, rejection reason, sanctioned/paid ₹. Student: a stepper card per application
+  plus schemes they qualify for but haven't applied to.
+- **04 Renewal Risk** (`/api/renewal-risk`): SANCTIONED/DISBURSED awards of renewable schemes, checked
+  against `renewal_criteria` (attendance ≥ 75, MCM also CGPA ≥ 6.5). AT_RISK / LIKELY_LOSS (gap > 10 pts)
+  rows first, plotted on a 55–100% attendance axis with the floor; ₹ at stake = sanctioned amount; the
+  on-track awards are folded behind "Show them". Each at-risk award has an open SCHOLARSHIP_RISK flag.
+- **05 Fee Reconciliation** (`/api/reconciliation`): every live award against the student's fee demand —
+  covered ₹, fee outstanding, what the ledger expects (`scholarship_expected`, should equal min(live awards,
+  gross fee)), active reminder. Cards = needs a human (suppression recommended: reminder active and covered ≥
+  outstanding > 0; ledger mismatch; reminder active); "Approve suppression" per card; "Approve ledger sync"
+  when mismatches exist; the reconciled rest is a paged table.
+- **06 Scheme Register** (`/api/schemes`, staff `?all=1` incl. retired): provider, benefit type/amount,
+  window, machine rules, documents, renewal conditions, "students match" (coverage eligible count);
+  officer: add / edit for this cycle / retire / reinstate.
+- **07 Agent Activity** (`/api/runs`, `/api/approvals`, plus cached panels): replayed trace of the
+  detect → decide → act → measure loop (figures read from the other endpoints); approval queue (8 newest of
+  `total`, bulk approve for notices / follow-ups — suppression & ledger stay one by one); audit trail of the
+  last 15 `agent_run`s (inputs → outputs, latency).
+- **08 Integrations** (`/api/integrations`): live DB provider / instance / server clock, schema & table
+  counts, live row counts of the shared tables read, consumes Agents 10 (term_result) & 11
+  (attendance_summary), feeds 40 (fee_demand), 41 (reminder_dispatch), 43 (scholarship_application), and the
+  last 12 provenance rows (`agent_run_input`).
+- **Roles**: Officer = all tabs + actions; HoD = read-only (no Activity); Accounts = coverage, tracker,
+  reconciliation, activity, integrations; Student (register-number login) = matrix, tracker, renewal,
+  schemes — own rows only, enforced server-side. Guest can preview every role.
+
 ## Scale rules (1000 students — keep it this way)
 - No per-row DB round-trips: batch facts (`get_students` once), bulk writes (`executemany`). Renewal risk rows
   are written once per award per day and a flag only if no identical OPEN flag exists.
