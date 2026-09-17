@@ -243,7 +243,10 @@ def _list_schemes():
         # Active only, so the register agrees with coverage_report/match_matrix,
         # which have always evaluated live schemes only. A deactivated scheme is
         # not open to anyone, so presenting it as a registered scheme misleads.
-        return {"schemes": engine.get_schemes(conn, active_only=True)}
+        # Staff can ask for retired schemes too (to reinstate them); everyone else
+        # sees the live register only.
+        everything = request.args.get("all") == "1" and not _student_scope()
+        return {"schemes": engine.get_schemes(conn, active_only=not everything)}
 
 
 @app.route("/api/scheme", methods=["POST"])
@@ -251,6 +254,39 @@ def _list_schemes():
 def api_create_scheme():
     data = request.get_json(force=True)
     return _safe(lambda: engine.create_scheme(data))
+
+
+@app.route("/api/scheme/<code>", methods=["POST"])
+@_staff_only
+def api_update_scheme(code):
+    data = request.get_json(force=True, silent=True) or {}
+    return _safe(lambda: engine.update_scheme(code, data))
+
+
+@app.route("/api/notify-all", methods=["POST"])
+@_staff_only
+def api_notify_all():
+    return _safe(engine.notify_all)
+
+
+@app.route("/api/follow-ups", methods=["POST"])
+@_staff_only
+def api_follow_ups():
+    return _safe(engine.draft_follow_ups)
+
+
+@app.route("/api/approve-bulk", methods=["POST"])
+@_staff_only
+def api_approve_bulk():
+    data = request.get_json(force=True, silent=True) or {}
+    return _safe(lambda: engine.approve_bulk(data.get("output_type", ""), data.get("note", "")))
+
+
+@app.route("/api/fee-ledger/sync", methods=["POST"])
+@_staff_only
+def api_fee_ledger_sync():
+    data = request.get_json(force=True, silent=True) or {}
+    return _safe(lambda: engine.sync_fee_ledger(data.get("note", "")))
 
 
 @app.route("/api/students")
@@ -409,12 +445,30 @@ def api_chat():
         if role == "STUDENT" and viewer and not re.search(r"\d{2}\s*cse\s*\d{3}", question.lower()):
             q = question + " " + viewer
         intent, payload = _route_question(q)
+        if role == "STUDENT" and viewer:
+            payload = _only_viewer(intent, payload, viewer)
         # If the visitor declined the AI cookie, answer deterministically (no Gemini).
         reply = (_phrase(question, intent, payload, viewer if role == "STUDENT" else None)
                  if ai_ok else _template_reply(intent, payload))
-        return jsonify({"reply": reply, "intent": intent, "data": payload})
+        # The page shows only the reply; the raw engine result (which, for a
+        # 1000-student cohort, is large and about other people) never leaves.
+        return jsonify({"reply": reply, "intent": intent})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"reply": f"Sorry, I could not answer that: {exc}", "error": str(exc)})
+
+
+def _only_viewer(intent: str, payload: dict, viewer: str) -> dict:
+    """A student's chat answer is computed from their own rows only."""
+    if intent == "renewal":
+        mine = [r for r in payload.get("results", []) if r["student"]["roll_no"] == viewer]
+        return {"results": mine, "at_risk_count": sum(
+            1 for r in mine if r["risk_level"] in ("AT_RISK", "LIKELY_LOSS"))}
+    if intent == "reconciliation":
+        mine = [r for r in payload.get("results", []) if r["roll_no"] == viewer]
+        return {"results": mine, "suppress_count": sum(1 for r in mine if r["recommend_suppress"])}
+    if intent in ("coverage", "integrations"):
+        return {}
+    return payload
 
 
 def _student_restriction(question: str, role: str, viewer: str):
@@ -658,6 +712,8 @@ def _template_reply(intent: str, payload: dict) -> str:
         names = [f"{r['student']['full_name']} ({r['student']['attendance_pct']}%)"
                  for r in payload.get("results", [])
                  if r["risk_level"] in ("AT_RISK", "LIKELY_LOSS")]
+        if len(names) > 8:
+            names = names[:8] + [f"and {len(names) - 8} more (see the Renewal Risk tab)"]
         base = ("Renewal rules require at least 75% attendance (and CGPA ≥ 6.5 for merit "
                 "schemes). ")
         if n == 0:
@@ -670,6 +726,9 @@ def _template_reply(intent: str, payload: dict) -> str:
         return (f"{n} fee reminder(s) should be suppressed because a sanctioned scholarship "
                 f"already covers the dues.")
     if intent == "coverage":
+        if not payload:
+            return ("Coverage across all students is visible to the Scholarship Officer and HoD. "
+                    "Ask me about your own eligibility, applications or renewals.")
         return (f"{payload.get('total_eligible',0)} eligible matches, "
                 f"{payload.get('total_covered',0)} covered, "
                 f"gap of {payload.get('coverage_gap',0)}.")
