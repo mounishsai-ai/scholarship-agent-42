@@ -27,10 +27,31 @@ disbursements against fees. Runs alone today; plugs into the platform by changin
 
 ## Stack / files
 - **Flask** `app.py` (thin routes) → **`scholarship_engine.py`** (deterministic logic) → **`db.py`** → Postgres.
+- **`accounts.py`** — real student sign-in: username = register number (e.g. `23CSE001`), first password =
+  the register number; bcrypt via pgcrypto in the additive table `identity.agent42_credential` (shared
+  `identity.app_user` is never altered). Students change it from the profile menu. Other login modes
+  (email/phone/empid/Google picker/guest) are still demo entry points.
+- **Cohort = 1000 students**: 22CSE001–250 … 25CSE001–250 (the hand-written 23CSE001–020 demo beats from
+  `seed.sql` are kept). Seeded by **`scripts/seed_cohort.py`** (deterministic, re-runnable; run after
+  `schema_full.sql` + `seed.sql`). Cohort filter is `roll_no ~ '^[0-9]{2}CSE[0-9]{3}$'` (`COHORT_SQL`).
+- **Frontend layers**: `app.js` (base loaders, tabs, roles, chat) then **`upgrade.js` + `upgrade.css`** (loaded
+  last) which *override* every panel loader — edit panels in `upgrade.js`, not `app.js`.
 - Reads through **views** (`people.v_student_profile`, `attendance.v_current_attendance`), not base tables.
 - Frontend: plain HTML/CSS/JS in `templates/` + `static/`, no build step; GSAP/Lenis vendored.
 - **Gemini 3.8-flash via Vertex ADC** (no API key), `GOOGLE_CLOUD_LOCATION=global`; only *phrases* chat,
   never originates a number. Works fully offline via templates.
+
+## Scale rules (1000 students — keep it this way)
+- No per-row DB round-trips: batch facts (`get_students` once), bulk writes (`executemany`). Renewal risk rows
+  are written once per award per day and a flag only if no identical OPEN flag exists.
+- Never put `crypt()` in a WHERE over many rows (it bcrypts every account) — find the row first.
+- JSON is gzipped in `after_request`; `/api/matrix` cells are slim (state + rule trace, no prose).
+- Long lists are searched/filtered/paged (`PAGE = 25`, `PAGERS` in `upgrade.js`), never 1000 animated nodes.
+- A register-number session is scoped **server-side** (`_student_scope`, `_staff_only`): own rows only,
+  staff endpoints 403 — the frontend must not call staff endpoints for a locked student.
+- Local test DB: `docker run -d --name a42pg -e POSTGRES_PASSWORD=local -e POSTGRES_DB=platform -p 55432:5432 postgres:16`,
+  load `schema/schema_full.sql`, `seed.sql`, then `scripts/seed_cohort.py`; use `127.0.0.1` (not `localhost`,
+  which stalls on IPv6 on Windows).
 
 ## Non-negotiable rules
 - **Every figure is computed in SQL/Python. The LLM never invents a number.**
@@ -71,7 +92,10 @@ media** — dashboard hero is the campus **image** (`campus.webp`), landing is t
   (`dhAssemble`, delays ~0.54s→1.08s — a deliberate ~0.5s lead-in so it never feels like lag).
   Reduced-motion disables it.
 - Sticky tabs pinned below the variable-height header (`--topbar-h` measured in JS); switching
-  panels does a directional slide (`asmUp/asmL/asmR`), never yanks scroll to top.
+  panels does a directional slide. If the reader is scrolled into the panels, the new tab opens at its own
+  top (just under the rail, `panelStartY()`); from the hero the page doesn't move.
+- Shared state colours: blue = claimed (money reached them), light blue = applied/in process,
+  gold = eligible & unclaimed (the gap), red = rejected, grey = not eligible.
 - Chat launcher = big AURA robot with a glow disc + "Any doubts? Ask me!" bubble.
 
 **Non-negotiable motion rule — no layout jump.** Async content (KPIs, hero copy) must **reserve its
