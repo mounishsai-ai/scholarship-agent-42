@@ -438,10 +438,13 @@ async function openPrepare(sid) {
     const d = await api("/api/student/" + sid + "/pack");
     const pre = Object.entries(d.prefilled).map(([k, v]) =>
       `<div><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("");
+    const checkList = (list) => `<div class="pack-checks">${(list || []).map(c =>
+      `<div><span class="${c.ok ? "ok" : "bad"}">${c.ok ? "✓" : "✗"}</span><b>${esc(c.label)}</b><span class="n">${esc(c.note || "")}</span></div>`).join("")}</div>`;
     const packs = d.packs.length ? d.packs.map(p => `
       <div class="pack-scheme">
         <div class="pack-h"><b>${esc(p.scheme)}</b><span class="pill status">${esc(p.benefit)}</span></div>
-        <div class="note">Apply by ${esc(p.deadline)}</div>
+        <div class="note">Apply by ${esc(p.deadline)}${p.status ? ` · application status: <b>${esc(p.status.replace("_", " ").toLowerCase())}</b>` : ""}</div>
+        ${checkList(p.checks)}
         <div class="pack-docs">${(p.documents.length ? p.documents : ["As per scheme"])
           .map(x => `<label><input type="checkbox"> ${esc(x)}</label>`).join("")}</div>
       </div>`).join("") : `<div class="note">Not currently eligible for any scheme.</div>`;
@@ -449,6 +452,8 @@ async function openPrepare(sid) {
       <h2>Application pack — ${esc(d.facts.full_name)} (${esc(d.facts.roll_no)})</h2>
       <div class="sub">Pre-filled from institutional records; tick documents as collected.</div>
       <div class="pack-pre">${pre}</div>
+      <div class="sch-rules-h">Format checks on the pre-filled record</div>
+      ${checkList(d.record_checks)}
       <div class="sch-rules-h">Eligible schemes & document checklist</div>
       ${packs}`;
     m.hidden = false;
@@ -612,8 +617,37 @@ function addRuleRow(field, op, val) {
   host.appendChild(div);
 }
 
+function openSchemeEdit(s) {
+  const m = $("#scheme-modal"), form = $("#scheme-form"); if (!m || !form || !s) return;
+  form.reset();
+  form.dataset.edit = s.code;
+  const set = (n, v) => { const el = form.querySelector(`[name="${n}"]`); if (el) el.value = v == null ? "" : v; };
+  set("code", s.code); set("name", s.name); set("provider_type", s.provider_type);
+  set("provider_name", s.provider_name); set("benefit_type", s.benefit_type);
+  set("benefit_amount", s.benefit_amount); set("application_opens", s.application_opens);
+  set("application_closes", s.application_closes);
+  set("required_documents", (s.required_documents || []).join(", "));
+  form.querySelector('[name="code"]').readOnly = true;
+  form.querySelector('[name="renewal_required"]').checked = !!s.renewal_required;
+  $("#sch-rules").innerHTML = "";
+  const crit = s.eligibility_criteria || {};
+  (crit.all || crit.any || []).forEach(r => addRuleRow(r.field, r.op, Array.isArray(r.value) ? r.value.join(", ") : r.value));
+  $("h2", m.querySelector(".sch-card")).textContent = `Edit ${s.name}`;
+  form.querySelector('button[type="submit"]').textContent = "Save changes";
+  const err = $("#sch-error"); if (err) err.hidden = true;
+  m.hidden = false;
+}
+window.openSchemeEdit = openSchemeEdit;
+
 function openSchemeModal() {
   const m = $("#scheme-modal"); if (!m) return;
+  const form = $("#scheme-form");
+  if (form) {
+    delete form.dataset.edit;
+    form.querySelector('[name="code"]').readOnly = false;
+    form.querySelector('button[type="submit"]').textContent = "Create scheme";
+    $("h2", m.querySelector(".sch-card")).textContent = "Add a scholarship scheme";
+  }
   $("#sch-rules").innerHTML = "";
   addRuleRow("annual_income", "lte", "250000");
   addRuleRow("cgpa", "gte", "7.0");
@@ -644,21 +678,28 @@ function openSchemeModal() {
       rules,
     };
     const btn = form.querySelector('button[type="submit"]');
-    btn.disabled = true; btn.textContent = "Creating…";
+    const editing = form.dataset.edit;
+    btn.disabled = true; btn.textContent = editing ? "Saving…" : "Creating…";
     try {
-      await api("/api/scheme", {
+      await api(editing ? "/api/scheme/" + encodeURIComponent(editing) : "/api/scheme", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
       });
       m.hidden = true; form.reset();
       invalidateCache(); loadKpis();
+      if (editing) {
+        delete form.dataset.edit;
+        showToast(`${editing} updated — every student is re-matched against the new rules.`);
+        if (loaders.schemes) loaders.schemes();
+        return;
+      }
       // The upgrade layer re-reads /api/matrix and reports how many students the
       // engine now matches to this scheme; it re-renders the panel when it has it.
       if (window.__a42SchemeCreated) window.__a42SchemeCreated(body.code, body.name);
       else loaders.schemes();
     } catch (err) {
       const e2 = $("#sch-error"); e2.textContent = err.message; e2.hidden = false;
-    } finally { btn.disabled = false; btn.textContent = "Create scheme"; }
+    } finally { btn.disabled = false; btn.textContent = form.dataset.edit ? "Save changes" : "Create scheme"; }
   });
 })();
 

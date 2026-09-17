@@ -166,6 +166,27 @@
     }
   });
 
+  // POST an agent action, then refresh everything that depends on it.
+  async function act(btn, path, body, done) {
+    if (!btn || btn.disabled) return;
+    var old = btn.textContent;
+    btn.disabled = true; btn.textContent = "Working…";
+    try {
+      var d = await window.api(path, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body || {})
+      });
+      if (window.invalidateCache) window.invalidateCache();
+      if (window.showToast) window.showToast(done(d));
+      if (window.loadKpis) window.loadKpis();
+      var active = $("nav.tabs .tab.active");
+      if (active && window.loaders[active.dataset.tab]) window.loaders[active.dataset.tab]();
+    } catch (e) {
+      btn.disabled = false; btn.textContent = old;
+      if (window.showToast) window.showToast("Could not complete that: " + e.message);
+    }
+  }
+
   var _typing = null;
   function onType(input, fn) {
     input.addEventListener("input", function () {
@@ -365,7 +386,28 @@
               "agent checks documents and ceilings before the student applies.</span></div>"
           : '<div class="a42-note ok"><i>✓</i><span>No rejections recorded this cycle.</span></div>';
 
-        el.innerHTML = ledger + partial +
+        var ds = d.disbursement || {};
+        var rejBy = (d.rejections_by_scheme || []).map(function (r) {
+          return "<b>" + esc(r.scheme_code) + "</b> " + nf(r.n);
+        }).join(" · ");
+        var disb =
+          '<div class="a42-ledger" style="animation-delay:.11s">' +
+            '<div class="a42-eyebrow">Disbursement · where the sanctioned money is</div>' +
+            '<div class="a42-dgrid">' +
+              '<div><div class="k">Sanctioned</div><div class="v">' + lakh(ds.sanctioned) + "</div>" +
+                '<div class="n">' + nf(ds.awards) + " awards</div></div>" +
+              '<div><div class="k">Paid to students</div><div class="v blue">' + lakh(ds.disbursed) + "</div>" +
+                '<div class="n">' + pct(ds.disbursed, ds.sanctioned) + "% of sanctioned</div></div>" +
+              '<div><div class="k">Sanctioned, not yet paid</div><div class="v gold">' + lakh(ds.awaiting_amount) + "</div>" +
+                '<div class="n">' + nf(ds.awaiting) + " awards waiting on the bank / treasury</div></div>" +
+              '<div><div class="k">Applied → paid</div><div class="v">' + (ds.avg_days != null ? nf(ds.avg_days) + " days" : "—") + "</div>" +
+                '<div class="n">average, for awards already paid</div></div>' +
+              '<div><div class="k">Rejection rate</div><div class="v red">' + pct(ds.rejected, ds.applications) + "%</div>" +
+                '<div class="n">' + nf(ds.rejected) + " of " + nf(ds.applications) + (rejBy ? " · " + rejBy : "") + "</div></div>" +
+            "</div>" +
+          "</div>";
+
+        el.innerHTML = ledger + partial + disb +
           '<div class="a42-ledger" style="animation-delay:.14s">' +
             '<h2 class="a42-h3" style="margin-bottom:6px">Where the gap lives, scheme by scheme</h2>' +
             '<div class="sub" style="margin-bottom:10px;max-width:70ch">Each bar is every student eligible ' +
@@ -492,7 +534,8 @@
     function filtered() {
       var q = AP.q.trim().toLowerCase();
       return APPS.filter(function (a) {
-        if (AP.stage && a.status !== AP.stage) return false;
+        if (AP.stage === "STALLED") { if (!a.stalled) return false; }
+        else if (AP.stage && a.status !== AP.stage) return false;
         if (AP.scheme && a.scheme_code !== AP.scheme) return false;
         if (q && (a.roll_no + " " + a.full_name).toLowerCase().indexOf(q) < 0) return false;
         return true;
@@ -517,6 +560,8 @@
           '<div class="sc"><b>' + esc(shortScheme(a.scheme_name)) + "</b><span>" +
             esc(a.external_application_no || a.scheme_code) + " · applied " + fmtDate(a.applied_on) + "</span></div>" +
           '<div class="tr">' + miniTrack(a.status) +
+            (a.stalled ? '<div class="a42-stall">⏱ stuck ' + nf(a.days_waiting) + " days" +
+              (a.follow_up_drafted ? " · follow-up drafted" : " · needs a follow-up") + "</div>" : "") +
             (a.rejection_reason ? '<div class="why">' + esc(a.rejection_reason) + "</div>" : "") + "</div>" +
           '<div class="am">' + amt + "</div>" +
         "</div>";
@@ -605,6 +650,8 @@
           neverMoney += (s.eligible_unapplied || 0) * (Number(s.benefit_amount) || 0);
         });
         var paid = sum.DISBURSED || 0, sanctioned = sum.SANCTIONED || 0;
+        var stalled = apps.filter(function (a) { return a.stalled; });
+        var undrafted = stalled.filter(function (a) { return !a.follow_up_drafted; }).length;
 
         var nodes = STAGES.map(function (s, i) {
           var n = count[s.key] || 0;
@@ -641,6 +688,13 @@
             '<div class="a42-offramps">' +
               '<button class="a42-off rej" data-a42-stage="REJECTED"><b>' + nf(count.REJECTED || 0) +
                 "</b> rejected <span>— mostly paperwork, see Coverage</span></button>" +
+              (stalled.length ? '<button class="a42-off stall" data-a42-stage="STALLED"><b>' + nf(stalled.length) +
+                "</b> stalled <span>— stuck past their stage’s time limit</span></button>" : "") +
+              (stalled.length && role.canAct
+                ? (undrafted
+                    ? '<button class="a42-btn small" id="a42-followups">Draft follow-ups for ' + nf(undrafted) + "</button>"
+                    : '<span class="a42-chip" style="background:#dcfce7;color:#166534">every stalled case has a follow-up drafted</span>')
+                : "") +
               (cov ? '<div class="a42-off never"><b>' + nf(never) + "</b> eligible matches never applied" +
                 (neverMoney ? " <span>— " + lakh(neverMoney) + " nobody has asked for</span>" : "") + "</div>" : "") +
             "</div>" +
@@ -657,11 +711,18 @@
                     " <em>" + nf(count[s.key] || 0) + "</em></button>";
                 }).join("") +
                 '<button class="a42-fchip" data-a42-stage="REJECTED">Rejected <em>' + nf(count.REJECTED || 0) + "</em></button>" +
+                '<button class="a42-fchip" data-a42-stage="STALLED">Stalled <em>' + nf(stalled.length) + "</em></button>" +
               "</div>" +
             "</div>" +
             '<div id="a42-aplist"></div>' +
           "</div>";
 
+        var fu = $("#a42-followups", el);
+        if (fu) fu.addEventListener("click", function () {
+          act(fu, "/api/follow-ups", {}, function (d) {
+            return d.drafted + " follow-up(s) drafted — approve them in Agent Activity.";
+          });
+        });
         onType($("#a42-apq", el), function () { AP.q = $("#a42-apq").value; AP.page = 1; renderList(); });
         $("#a42-apscheme", el).addEventListener("change", function (e) {
           AP.scheme = e.target.value; AP.page = 1; renderList();
@@ -807,7 +868,13 @@
             why = '<div class="a42-why"><div class="hd"><div>' +
               '<div class="a42-eyebrow">Rule trace · the engine’s own working</div>' +
               '<div class="ti">' + esc(st.full_name) + " (" + esc(st.roll_no) + ") × " + esc(os.name) + "</div></div>" +
-              '<button class="cl" data-a42-why-close>close</button></div>' + ruleTrace(oc, os) + "</div>";
+              '<button class="cl" data-a42-why-close>close</button></div>' + ruleTrace(oc, os) +
+              '<div class="a42-whyact">' +
+                (rungOf(oc) === "ELIGIBLE" && activeRole().canAct
+                  ? '<button class="a42-btn small" data-a42-notify="' + esc(st.student_id) + '">Draft notice for ' +
+                    esc(st.full_name.split(" ")[0]) + "</button>" : "") +
+                '<button class="a42-btn ghost small" data-a42-story="' + esc(st.student_id) + '">Open application pack</button>' +
+              "</div></div>";
           }
         }
         return '<div class="a42-mxrow" style="grid-template-columns:' + cols + '">' +
@@ -939,6 +1006,12 @@
               "let in, how many of them applied, and how many actually got the money. Tap a number to list " +
               "those students.</div>" +
             '<div class="a42-ladders">' + ladder() + "</div>" +
+            (role.canAct && counts.ELIGIBLE
+              ? '<div class="a42-notifybar"><span><b>' + nf(counts.ELIGIBLE) + "</b> eligible matches have no " +
+                  "application. Draft a notice for each — benefit, deadline and exact documents — and they " +
+                  "wait in Agent Activity until you approve them.</span>" +
+                  '<button class="a42-btn" id="a42-notifyall">Draft notices</button></div>'
+              : "") +
           "</div>" +
           '<div class="a42-ledger" style="animation-delay:.1s" data-a42-list>' +
             '<div class="a42-rungkeys">' + legend + "</div>" +
@@ -960,6 +1033,14 @@
             '<div id="a42-mxlist"></div>' +
           "</div>";
 
+        var na = $("#a42-notifyall", el);
+        if (na) na.addEventListener("click", function () {
+          act(na, "/api/notify-all", {}, function (d) {
+            return d.drafted
+              ? d.drafted + " notice(s) drafted — approve them in Agent Activity."
+              : "Every eligible student without an application already has a notice drafted or sent.";
+          });
+        });
         onType($("#a42-mxq", el), function () { MX.q = $("#a42-mxq").value; MX.page = 1; MX.open = null; renderList(); });
         [["#a42-mxshow", "show"], ["#a42-mxscheme", "scheme"], ["#a42-mxbatch", "batch"]].forEach(function (p) {
           $(p[0], el).addEventListener("change", function (e) {
@@ -1045,6 +1126,9 @@
           '<div class="cell"><div class="k">Fee still due</div>' +
             '<div class="v" style="color:' + (r.outstanding > 0 ? "#e8930c" : "#12a150") + '">' +
               inr(r.outstanding) + "</div></div>" +
+          '<div class="cell"><div class="k">Ledger expects</div>' +
+            '<div class="s" style="color:' + (r.ledger_mismatch ? "#8a4b08" : "#166534") + '">' +
+              inr(r.scholarship_expected) + (r.ledger_mismatch ? " → should be " + inr(r.ledger_expected) : " ✓") + "</div></div>" +
           '<div class="cell"><div class="k">Active reminder</div>' +
             '<div class="s" style="color:' + (r.active_reminder ? "#991b1b" : "#166534") + '">' +
               (r.active_reminder ? esc(r.reminder_segment || "reminder queued") : "none") + "</div></div>" +
@@ -1086,12 +1170,21 @@
         if (role.student) list = list.filter(function (r) { return r.roll_no === role.student; });
 
         // Anything a human should look at gets a card; the rest agree already.
-        var loud = role.student ? list : list.filter(function (r) { return r.recommend_suppress || r.active_reminder; });
-        QUIET = role.student ? [] : list.filter(function (r) { return !r.recommend_suppress && !r.active_reminder; });
+        var loud = role.student ? list : list.filter(function (r) { return r.recommend_suppress || r.active_reminder || r.ledger_mismatch; });
+        QUIET = role.student ? [] : list.filter(function (r) { return !r.recommend_suppress && !r.active_reminder && !r.ledger_mismatch; });
         var toApprove = list.filter(function (r) { return r.recommend_suppress; });
         var money = toApprove.reduce(function (t, r) { return t + (Number(r.outstanding) || 0); }, 0);
 
         var cards = loud.map(function (r, i) { return reconCard(r, i, canAct); }).join("");
+        var ledgerN = d.ledger_sync_count || 0;
+        var ledgerBar = role.student ? "" : (ledgerN
+          ? '<div class="a42-notifybar warn"><span><b>' + nf(ledgerN) + "</b> fee demand(s) in Agent 40’s ledger " +
+              "expect a different scholarship amount than was sanctioned. Syncing sets " +
+              "<code>fee_demand.scholarship_expected</code> to the live awards.</span>" +
+              (canAct ? '<button class="a42-btn" id="a42-ledgersync">Approve ledger sync</button>'
+                      : '<span class="a42-chip" style="background:#fff7ed;color:#8a4b08">read-only in this role</span>') + "</div>"
+          : '<div class="a42-note ok"><i>✓</i><span>Fee ledger (Agent 40) agrees with every live award — ' +
+              "each fee demand already expects the scholarship that was sanctioned.</span></div>");
 
         el.innerHTML =
           '<div class="a42-ledger">' +
@@ -1111,6 +1204,7 @@
             '<div class="a42-quote">“Reminders MUST be suppressed where a sanctioned scholarship or ' +
               "approved installment plan covers the dues. This is the most common cause of avoidable " +
               "distress in fee follow-up.” — comment in the platform schema (finance.reminder_dispatch).</div>" +
+            ledgerBar +
             '<div class="a42-recons">' + (cards ||
               '<div class="a42-note ok"><i>✓</i><span>Nothing needs a human here — every award and fee demand agree.</span></div>') + "</div>" +
           "</div>" +
@@ -1124,6 +1218,12 @@
               "</div>"
             : "");
 
+        var ls = $("#a42-ledgersync", el);
+        if (ls) ls.addEventListener("click", function () {
+          act(ls, "/api/fee-ledger/sync", { note: "Approved by Scholarship Officer" }, function (d) {
+            return d.updated + " fee demand(s) updated in the ledger.";
+          });
+        });
         var tg = $("#a42-rctoggle", el);
         if (tg) tg.addEventListener("click", function () {
           RC.open = !RC.open; RC.page = 1;
@@ -1225,6 +1325,41 @@
       "</div>";
   }
 
+  var SCHEME_BY_CODE = {};
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest && ev.target;
+    if (!t || !t.closest) return;
+    var e = t.closest("[data-a42-edit]");
+    if (e && typeof window.openSchemeEdit === "function") {
+      window.openSchemeEdit(SCHEME_BY_CODE[e.dataset.a42Edit]);
+      return;
+    }
+    var r = t.closest("[data-a42-retire]");
+    if (r) {
+      var retiring = r.dataset.active === "1";
+      if (retiring && !window.confirm("Retire " + r.dataset.a42Retire + "? It stops being matched and notified; " +
+          "existing applications are kept.")) return;
+      act(r, "/api/scheme/" + encodeURIComponent(r.dataset.a42Retire), { is_active: !retiring }, function () {
+        return r.dataset.a42Retire + (retiring ? " retired." : " reinstated — every student re-matched.");
+      });
+      return;
+    }
+    var b = t.closest("[data-a42-bulk]");
+    if (b) {
+      act(b, "/api/approve-bulk", { output_type: b.dataset.a42Bulk }, function (d) {
+        return d.approved + " item(s) approved.";
+      });
+      return;
+    }
+    var n = t.closest("[data-a42-notify]");
+    if (n) {
+      act(n, "/api/notify/" + encodeURIComponent(n.dataset.a42Notify), {}, function (d) {
+        return d.drafted ? d.drafted + " notice(s) drafted for " + d.roll_no + " — approve in Agent Activity."
+                         : d.roll_no + ": already notified or applied — nothing new to send.";
+      });
+    }
+  });
+
   function installSchemes(getData, errorCard) {
     window.loaders.schemes = async function () {
       var el = $("#panel-schemes");
@@ -1232,7 +1367,7 @@
         var role = activeRole();
         var canAct = role.canAct;
         var res = await Promise.all([
-          getData("/api/schemes"),
+          getData(canAct ? "/api/schemes?all=1" : "/api/schemes"),
           role.student ? Promise.resolve(null) : getData("/api/coverage").catch(function () { return null; })
         ]);
         var schemes = res[0].schemes || [];
@@ -1266,7 +1401,15 @@
             : '<code class="none">Not renewable — one award per cycle</code>';
           var n = eligibleByName[s.name];
 
-          return '<div class="a42-ledger" style="animation-delay:' + (0.06 + i * 0.05).toFixed(2) + 's">' +
+          SCHEME_BY_CODE[s.code] = s;
+          var tools = canAct
+            ? '<div class="a42-schemetools">' +
+                '<button class="a42-btn ghost small" data-a42-edit="' + esc(s.code) + '">Edit for this cycle</button>' +
+                '<button class="a42-btn ghost small" data-a42-retire="' + esc(s.code) + '" data-active="' +
+                  (s.is_active ? "1" : "0") + '">' + (s.is_active ? "Retire scheme" : "Reinstate scheme") + "</button></div>"
+            : "";
+          return '<div class="a42-ledger' + (s.is_active === false ? " retired" : "") + '" style="animation-delay:' + (0.06 + i * 0.05).toFixed(2) + 's">' +
+            (s.is_active === false ? '<div class="a42-retired">Retired — not matched against students</div>' : "") +
             '<div class="a42-schemehd">' +
               "<div><h2 class=\"a42-h3\" style=\"margin-bottom:4px\">" + esc(s.name) +
                 ' <span class="a42-chip" style="background:#e6eefc;color:#2f52c4">' +
@@ -1286,7 +1429,7 @@
                 '<div class="a42-docs">' + docs + "</div>" +
                 '<div class="a42-eyebrow" style="margin-top:16px">Renewal conditions</div>' +
                 '<div class="a42-codes">' + ren + "</div></div>" +
-            "</div>" +
+            "</div>" + tools +
           "</div>";
         }).join("");
 
@@ -1498,6 +1641,13 @@
             '<div class="stat">waiting…</div></div>';
         }).join("");
 
+        var byType = res[1].by_type || {};
+        var bulk = canAct ? [["ALERT", "student notices"], ["ACTION_PROPOSAL", "follow-ups"]]
+          .filter(function (t) { return byType[t[0]]; })
+          .map(function (t) {
+            return '<button class="a42-btn small" data-a42-bulk="' + t[0] + '">Approve all ' +
+              nf(byType[t[0]]) + " " + t[1] + "</button>";
+          }).join("") : "";
         var queue = approvals.slice(0, QUEUE_SHOWN).map(function (a) {
           var btns = canAct
             ? '<button class="a42-btn small" data-approve="' + esc(a.agent_output_id) + '">Approve</button>' +
@@ -1541,6 +1691,8 @@
               (waiting > QUEUE_SHOWN
                 ? " Showing the " + QUEUE_SHOWN + " newest of <b>" + nf(waiting) + "</b> waiting."
                 : "") + "</div>" +
+            (bulk ? '<div class="a42-bulkbar"><span>Reviewed the drafts? Approve a whole batch at once — ' +
+              "money-moving recommendations still go one by one.</span>" + bulk + "</div>" : "") +
             '<div class="a42-approvals">' + (queue ||
               '<div class="a42-note ok"><i>✓</i><span>Nothing is waiting on a human right now.</span></div>') +
             "</div></div>" +
