@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=14" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=16" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
 </head>
 <body>
@@ -414,7 +414,7 @@
     <div class="footer-badges">
       <div class="footer-h">Accreditation</div>
       <div class="badge-row">
-        <img src="{{ url_for('static', filename='img/badges.png') }}?v=4" alt="NAAC A+, NIRF, NBA, UGC, ABET accreditation badges"
+        <img src="{{ url_for('static', filename='img/badges.png') }}?v=5" alt="NAAC A+, NIRF, NBA, UGC, ABET accreditation badges"
              class="badge-strip" onerror="this.style.display='none'" />
       </div>
     </div>
@@ -439,6 +439,9 @@
       <a href="{{ url_for('cookies') }}">Cookies</a> ·
       <a href="#" data-cb-settings>Cookie settings</a>
     </span>
+  </div>
+  <div class="footer-credit wrap">
+    Campus aerial footage — YouTube: <strong>CRAK&nbsp;PRODUCTIONS</strong>
   </div>
 </footer>
 

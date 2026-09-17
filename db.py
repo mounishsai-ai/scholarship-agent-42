@@ -9,8 +9,8 @@ and so row-level security has the context it expects. We connect as the Supabase
 is still set for authenticity and audit.
 """
 import os
-import psycopg
 from psycopg.rows import dict_row
+from psycopg_pool import ConnectionPool
 from contextlib import contextmanager
 from dotenv import load_dotenv
 
@@ -25,9 +25,43 @@ def db_configured() -> bool:
     return bool(DATABASE_URL)
 
 
+# A pooled, always-warm connection. Opening a fresh psycopg connection per request
+# costs the full TLS + auth handshake every time — sub-second in-region, but several
+# seconds through the Cloud SQL Auth Proxy, which is what made the hero "Reading…"
+# hang locally. The pool keeps min_size connections open and reuses them, so the
+# handshake is paid once, not on every /api call. (connect_timeout keeps a truly
+# unreachable DB failing fast instead of hanging the request forever.)
+_pool: ConnectionPool | None = None
+
+
+def _get_pool() -> ConnectionPool:
+    global _pool
+    if _pool is None:
+        _pool = ConnectionPool(
+            conninfo=DATABASE_URL,
+            # min_size is the pool's warm floor. The dashboard loads a panel by
+            # firing its endpoints in parallel (Agent Activity needs seven), so a
+            # floor of 1 meant the first burst after boot had to open six more
+            # connections through the Cloud SQL Auth Proxy at once and some blew
+            # the borrow timeout -> a 500 on first paint. Warm four up front.
+            min_size=4, max_size=8,
+            timeout=12,           # max wait to borrow a connection
+            max_idle=300,         # recycle idle connections after 5 min
+            kwargs={"row_factory": dict_row, "connect_timeout": 6},
+            # Validate a connection before handing it out. Without this the pool
+            # cheerfully returns connections the Cloud SQL Auth Proxy has already
+            # dropped after an idle spell: the request 500s and only then is the
+            # connection discarded, so the first N calls after a pause all fail at
+            # once (very visible now the dashboard fetches panels in parallel).
+            check=ConnectionPool.check_connection,
+            open=True,
+        )
+    return _pool
+
+
 @contextmanager
 def get_conn(role_context: dict | None = None):
-    """Yield a committed connection with dict rows and session context set.
+    """Yield a committed pooled connection with dict rows and session context set.
 
     role_context example: {"role_codes": "STUDENT", "student_id": "<uuid>"}
     """
@@ -36,11 +70,10 @@ def get_conn(role_context: dict | None = None):
             "DATABASE_URL is not set. Copy .env.example to .env and paste your "
             "Supabase connection string."
         )
-    # connect_timeout so a stopped/unreachable DB fails fast with a clear error
-    # instead of hanging the request (which shows as "agent running" forever).
-    conn = psycopg.connect(DATABASE_URL, row_factory=dict_row, autocommit=False,
-                           connect_timeout=6)
-    try:
+    # pool.connection() commits on clean exit and rolls back on error, then returns
+    # the connection to the pool (it is not closed). Session context is re-applied on
+    # every checkout because pooled connections are reused across requests.
+    with _get_pool().connection() as conn:
         with conn.cursor() as cur:
             if AGENT_USER_ID:
                 cur.execute("SELECT set_config('app.user_id', %s, false)", (AGENT_USER_ID,))
@@ -52,12 +85,6 @@ def get_conn(role_context: dict | None = None):
                         (f"app.{key}", "" if value is None else str(value)),
                     )
         yield conn
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
 
 
 def query(sql: str, params: tuple = ()) -> list[dict]:

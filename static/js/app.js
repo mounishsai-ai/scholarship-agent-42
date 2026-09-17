@@ -139,11 +139,10 @@ async function loadHero() {
   if (eb) eb.textContent = `${role.label} · live on the shared platform`;
   try {
     if (role.student) {
-      const m = await getData("/api/matrix");
+      const [m, rn] = await Promise.all([getData("/api/matrix"), getData("/api/renewal-risk")]);
       const row = m.rows.find(x => x.student.roll_no === role.student);
       const eligible = row ? row.cells.filter(c => c.is_eligible).length : 0;
       const name = row ? row.student.full_name.split(" ")[0] : "there";
-      const rn = await getData("/api/renewal-risk");
       const atRisk = rn.results.some(x => x.student.roll_no === role.student && ["AT_RISK", "LIKELY_LOSS"].includes(x.risk_level));
       h.innerHTML = `Hi ${esc(name)} — you qualify for <span class="hl" id="hero-n">0</span> scholarship${eligible === 1 ? "" : "s"}.`;
       countUp($("#hero-n"), eligible);
@@ -152,8 +151,9 @@ async function loadHero() {
         : `Every scheme you match, with the exact rule behind each decision. Your renewals are on track.`;
       return;
     }
-    const c = await getData("/api/coverage");
-    const rec = await getData("/api/reconciliation");
+    // Fire both in parallel — awaiting them one after the other doubled the hero's
+    // wait (and it was the last thing on screen to settle).
+    const [c, rec] = await Promise.all([getData("/api/coverage"), getData("/api/reconciliation")]);
     h.innerHTML = `<span class="hl" id="hero-n">0</span> scholarship matches are sitting <span class="hl-blue">unclaimed</span>.`;
     countUp($("#hero-n"), c.coverage_gap);
     sub.innerHTML = `${c.total_eligible} eligible matches across ${role.label === "Head of Department" ? "the department" : "20 students"}, `
@@ -180,8 +180,12 @@ async function loadHero() {
 const loaders = {};
 const TAB_ORDER = $$(".tab").map(t => t.dataset.tab);
 let _activeTabName = "coverage";
-// Switch tab with a directional slide (right = forward, left = back) — the
-// "swipe between tabs" feel, keyboard/click/touch all route through here.
+// Switch tab with the handoff's two-phase transition: the outgoing panel leaves
+// (220ms, toward the direction of travel), content is swapped at ~205ms, then the
+// incoming panel slides in from the opposite side (500ms) while its cards cascade
+// in with a 90ms stagger. Every caller — tabs, ‹ › arrows, KPI cards, swipe —
+// funnels through here, so they all get the same motion.
+let _swapping = false;
 function switchTab(name, opts) {
   opts = opts || {};
   if (!name) return;
@@ -190,24 +194,75 @@ function switchTab(name, opts) {
     if (a) a.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   if (name === _activeTabName) { if (opts.scrollToContent) scrollToContent(); return; }
+  if (_swapping) return;          // repeat clicks mid-swap are ignored, per the spec
   const keepY = window.scrollY;   // never yank the viewport to the top on switch
   const from = TAB_ORDER.indexOf(_activeTabName), to = TAB_ORDER.indexOf(name);
-  const dir = to >= from ? "right" : "left";
+  const fwd = to >= from;
+  const dir = fwd ? "right" : "left";
+  const wrap = $(".panels");
+
+  // The rail answers the press, not the commit: the active tab, its gold underline,
+  // the NN / 08 marker and the progress line all move the instant you click.
   $$(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === name));
-  $$(".panel").forEach(p => p.classList.remove("active"));
-  const panel = $("#panel-" + name);
-  if (!panel) return;
-  panel.classList.add("active");
-  panel.dataset.dir = dir;
-  replay(panel);
-  _activeTabName = name;
-  if (window.__updateSecNav) window.__updateSecNav();
-  // Either bring the section content into view, or keep the current scroll.
-  const after = opts.scrollToContent ? scrollToContent : () => window.scrollTo(0, keepY);
-  requestAnimationFrame(after);
-  const p = loaders[name] ? loaders[name]() : null;
-  if (p && p.then) p.then(() => requestAnimationFrame(after));
+  if (window.__a42SyncRail) window.__a42SyncRail(name);
+
+  const commit = () => {
+    _swapping = false;
+    $$(".panel").forEach(p => p.classList.remove("active"));
+    const panel = $("#panel-" + name);
+    if (!panel) return;
+    panel.classList.add("active");
+    panel.dataset.dir = dir;
+    _activeTabName = name;
+    if (window.__updateSecNav) window.__updateSecNav();
+
+    if (wrap) {
+      wrap.style.animation = "none";
+      wrap.style.opacity = "1";
+      wrap.style.filter = "none";
+      wrap.style.transform = "none";
+      if (!_prefersReduced) {
+        void wrap.offsetWidth;
+        wrap.style.animation = "panelIn" + (fwd ? "Fwd" : "Back") +
+          " .5s cubic-bezier(.19,1,.22,1) both";
+        setTimeout(() => {
+          wrap.style.animation = "none";
+          wrap.style.transform = "none";
+        }, 620);
+      }
+    }
+    cascade(panel);
+
+    // Either bring the section content into view, or keep the current scroll.
+    const after = opts.scrollToContent ? scrollToContent : () => window.scrollTo(0, keepY);
+    requestAnimationFrame(after);
+    const p = loaders[name] ? loaders[name]() : null;
+    if (p && p.then) p.then(() => { cascade(panel); requestAnimationFrame(after); });
+  };
+
+  if (!wrap || _prefersReduced) { commit(); return; }
+  _swapping = true;
+  wrap.style.animation = "none";
+  void wrap.offsetWidth;
+  wrap.style.animation = "panelOut" + (fwd ? "Fwd" : "Back") +
+    " .22s cubic-bezier(.45,0,.9,.6) both";
+  setTimeout(commit, 205);
 }
+
+// The card cascade inside a panel: 90ms apart, first one at 50ms. On a panel that
+// is a single card, the cascade descends one level into that card's sections.
+function cascade(panel) {
+  if (!panel || _prefersReduced) return;
+  let items = [...panel.children];
+  if (items.length === 1 && items[0].children.length > 1) items = [...items[0].children];
+  items.forEach((el, i) => {
+    el.style.animation = "none";
+    void el.offsetWidth;
+    el.style.animation = "asmIn .62s cubic-bezier(.16,1,.3,1) " +
+      (0.05 + i * 0.09).toFixed(3) + "s both";
+  });
+}
+
 $$(".tab").forEach(tab => tab.addEventListener("click", () => switchTab(tab.dataset.tab)));
 
 // Swipe left/right on the panels to move between visible tabs (touch + trackpad drag).
@@ -256,9 +311,9 @@ async function loadKpis() {
         <div class="kpi ${atRisk ? "bad" : "good"}"><div class="num">${atRisk ? "!" : "✓"}</div><div class="lbl">${atRisk ? "Renewal at risk" : "Renewals on track"}</div></div>`;
       return;
     }
-    const c = await getData("/api/coverage");
-    const r = await getData("/api/renewal-risk");
-    const rec = await getData("/api/reconciliation");
+    const [c, r, rec] = await Promise.all([
+      getData("/api/coverage"), getData("/api/renewal-risk"), getData("/api/reconciliation"),
+    ]);
     $("#kpis").innerHTML = `
       <div class="kpi"><div class="num">${c.total_eligible}</div><div class="lbl">Eligible matches</div></div>
       <div class="kpi good"><div class="num">${c.total_covered}</div><div class="lbl">Covered</div></div>
@@ -579,7 +634,11 @@ function openSchemeModal() {
         body: JSON.stringify(body)
       });
       m.hidden = true; form.reset();
-      invalidateCache(); loadKpis(); loaders.schemes();
+      invalidateCache(); loadKpis();
+      // The upgrade layer re-reads /api/matrix and reports how many students the
+      // engine now matches to this scheme; it re-renders the panel when it has it.
+      if (window.__a42SchemeCreated) window.__a42SchemeCreated(body.code, body.name);
+      else loaders.schemes();
     } catch (err) {
       const e2 = $("#sch-error"); e2.textContent = err.message; e2.hidden = false;
     } finally { btn.disabled = false; btn.textContent = "Create scheme"; }
@@ -884,7 +943,7 @@ function addMsg(text, who) {
        <a class="linkbtn" href="/logout">Use guest login to preview all roles</a>`;
   } else if (rs) {
     rs.insertAdjacentHTML("beforeend",
-      `<span class="guest-note">Guest preview — switch roles to explore. In production each user sees only their own role.</span>`);
+      `<span class="guest-note"><b>Guest preview</b> — switch roles to explore. In production each user sees only their own role.</span>`);
   }
 })();
 applyRole();
@@ -986,3 +1045,12 @@ applyRole();
   toggle.addEventListener("click", () => { dismissed = true; hide(); if (timer) clearTimeout(timer); });
   bubble.addEventListener("click", () => toggle.click());
 })();
+
+// ------------------------------------------------------------------ upgrade layer hooks
+// `loaders` is a module-private const, so the visual upgrade layer (upgrade.js,
+// loaded after this file) cannot reach it without an explicit handle. getData and
+// errorCard are function declarations and already global; exported here too so the
+// contract the upgrade layer checks for is all in one place.
+window.loaders = loaders; window.getData = getData; window.errorCard = errorCard;
+window.ROLES = ROLES; window.currentRole = () => currentRole;
+window.switchTab = switchTab; window.cascade = cascade;

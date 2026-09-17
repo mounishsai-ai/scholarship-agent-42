@@ -362,13 +362,15 @@ a { color: inherit; text-decoration: none; }
 .footer-event { margin: 20px 0 0; font-size: 13.5px; color: #9fb0d4; line-height: 1.5; }
 .footer-h { font-family: var(--font-mono); font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: #7f92bd; margin-bottom: 14px; }
 .badge-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.badge-strip { height: 54px; width: auto; }
+.badge-strip { height: 51px; width: auto; }
 .acc-badge { font-family: var(--font-alt); font-size: 11.5px; font-weight: 700; color: #dbe6ff; border: 1px solid rgba(255,255,255,.18); background: rgba(255,255,255,.06); border-radius: 999px; padding: 5px 11px; }
 .footer-team ul { list-style: none; margin: 0 0 16px; padding: 0; }
 .footer-team li { font-size: 15px; color: #eef2fb; font-weight: 600; padding: 3px 0; }
 .footer-gh { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: #9fb0d4; font-family: var(--font-mono); word-break: break-all; }
 .footer-gh:hover { color: #fff; }
 .footer-bottom { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 40px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.1); font-size: 12.5px; color: #8296c0; }
+.footer-credit { margin-top: 14px; font-size: 11.5px; letter-spacing: .01em; color: #6b7da3; }
+.footer-credit strong { color: #9fb2d8; font-weight: 600; }
 
 /* ============================ RESPONSIVE ============================ */
 /* ---- overflow safety: let hero children shrink & wrap, never widen the page ---- */

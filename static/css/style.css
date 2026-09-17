@@ -68,7 +68,7 @@ a { color: inherit; }
   font-family: var(--font-alt); font-size: 11px; font-weight: 700; color: var(--navy);
   border: 1px solid #cfe0ff; background: #f0f6ff; border-radius: 999px; padding: 4px 10px;
 }
-.badge-strip { height: 67px; }
+.badge-strip { height: 64px; }
 .session { display: flex; align-items: center; gap: 12px; }
 .session-chip {
   display: inline-flex; align-items: center; gap: 7px;
@@ -120,7 +120,9 @@ a { color: inherit; }
 }
 .dh-bg {
   position: absolute; inset: 0; z-index: -4;
-  background: #12244f url("../img/campus.webp") 62% 34% / cover no-repeat;
+  /* campus.webp is pre-cropped to ~1.92:1 (the hero ratio), so cover fits it with
+     next to no overflow — centre framing needs no pan. */
+  background: #12244f url("../img/campus.webp") center / cover no-repeat;
   transform: scale(1.06);
   animation: dhKen 40s ease-in-out infinite alternate;
 }
@@ -191,6 +193,9 @@ a { color: inherit; }
   font-size: clamp(30px, 5vw, 58px); line-height: 1.02; letter-spacing: -.025em;
   margin: 14px 0 10px; max-width: 20ch;
   color: #f4f8ff; text-shadow: 0 2px 34px rgba(4,10,30,.55);
+  /* Reserve the final 2-line height so swapping "Reading…" for the real headline
+     (bottom-anchored copy) doesn't grow the block and shove everything upward. */
+  min-height: 2.04em;
 }
 .dh-headline .hl {
   background: linear-gradient(120deg, #ffd27a, #e8930c);
@@ -200,12 +205,15 @@ a { color: inherit; }
   background: linear-gradient(120deg, #bcd6ff, #6ea8ff);
   -webkit-background-clip: text; background-clip: text; color: transparent;
 }
-.dh-sub { font-size: 16px; color: #d7e2f6; max-width: 50ch; line-height: 1.55; margin: 0; }
+.dh-sub { font-size: 16px; color: #d7e2f6; max-width: 50ch; line-height: 1.55; margin: 0;
+  min-height: 4.65em; /* reserve ~3 lines so the real sub-copy doesn't push the hero up */ }
 .dash-hero .scope-bar { margin: 14px 0 0; padding: 0; color: #d7e2f6; }
 .dash-hero #scope-note { color: #f2f6ff; }
 
 /* 3D glass KPI cards — real tilt driven by JS custom props --rx / --ry */
-.dh-kpis { gap: 15px; transform-style: preserve-3d; }
+/* min-height reserves one row so an empty/loading/error state never collapses the
+   container and shoves the hero copy (belt-and-suspenders with the skeleton cards). */
+.dh-kpis { gap: 15px; transform-style: preserve-3d; min-height: 88px; }
 .dh-kpis .kpi {
   position: relative; --rx: 0deg; --ry: 0deg;
   background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.06));
@@ -228,6 +236,29 @@ a { color: inherit; }
 .dh-kpis .kpi .lbl { color: #cfdcf5; transform: translateZ(16px); }
 .dh-kpis .kpi.good .num { color: #a7c7ff; }
 .dh-kpis .kpi.bad .num { color: #ffce6b; }
+
+/* Post-login entrance: the hero elements assemble in a staggered sequence.
+   (KPI container animates as a block so it never fights the per-card 3D tilt.) */
+@keyframes dhAssemble { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+.dash-hero .platform-bar,
+.dash-hero .role-switch,
+.dash-hero .dh-eyebrow,
+.dash-hero .dh-headline,
+.dash-hero .dh-sub,
+.dash-hero .scope-bar,
+.dash-hero .dh-kpis { animation: dhAssemble .7s cubic-bezier(.2, 1, .3, 1) both; }
+/* +0.5s lead-in: let the campus image land first, then the overlay elements assemble. */
+.dash-hero .platform-bar { animation-delay: .54s; }
+.dash-hero .role-switch  { animation-delay: .62s; }
+.dash-hero .dh-eyebrow   { animation-delay: .72s; }
+.dash-hero .dh-headline  { animation-delay: .82s; }
+.dash-hero .dh-sub       { animation-delay: .92s; }
+.dash-hero .scope-bar    { animation-delay: 1.00s; }
+.dash-hero .dh-kpis      { animation-delay: 1.08s; }
+@media (prefers-reduced-motion: reduce) {
+  .dash-hero .platform-bar, .dash-hero .role-switch, .dash-hero .dh-eyebrow,
+  .dash-hero .dh-headline, .dash-hero .dh-sub, .dash-hero .scope-bar, .dash-hero .dh-kpis { animation: none; }
+}
 
 @media (max-width: 720px) {
   .dash-hero { min-height: 74svh; }
@@ -614,11 +645,18 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
   .brand-kicker { display: none; }
   .badges { display: none; }
   .topbar-right { gap: 10px; }
+  .logo { height: 48px; }
+  .brand-mark { display: none; }        /* drop the redundant bot icon next to the logo */
+  .topbar { gap: 10px; }
 }
 @media (max-width: 560px) {
   .brand-title { font-size: 17px; }
   .controls { padding-top: 14px; }
   .dash-footer-inner { flex-direction: column; gap: 8px; }
+}
+@media (max-width: 430px) {
+  .brand-text { display: none; }        /* keep just the Vignan logo + controls so nothing overflows */
+  .logo { height: 44px; }
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
@@ -770,7 +808,10 @@ button:focus-visible, a:focus-visible, input:focus-visible { outline: 3px solid 
 .top-legal { display: flex; gap: 12px; }
 .top-legal a { font-size: 12.5px; color: var(--muted); text-decoration: none; font-weight: 600; white-space: nowrap; }
 .top-legal a:hover { color: var(--blue); }
-@media (max-width: 960px) { .top-legal { display: none; } }
+@media (max-width: 1240px) { .top-legal { display: none; } }
+/* Below ~1080px the header can't fit the logo + brand + full badge strip, so hide
+   the badges there to prevent horizontal overflow (they also live in the footer). */
+@media (max-width: 1080px) { .badges { display: none; } }
 
 /* ---------- Integrations panel ---------- */
 .int-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }

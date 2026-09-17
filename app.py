@@ -141,7 +141,10 @@ def api_schemes():
 def _list_schemes():
     from db import get_conn
     with get_conn() as conn:
-        return {"schemes": engine.get_schemes(conn, active_only=False)}
+        # Active only, so the register agrees with coverage_report/match_matrix,
+        # which have always evaluated live schemes only. A deactivated scheme is
+        # not open to anyone, so presenting it as a registered scheme misleads.
+        return {"schemes": engine.get_schemes(conn, active_only=True)}
 
 
 @app.route("/api/scheme", methods=["POST"])

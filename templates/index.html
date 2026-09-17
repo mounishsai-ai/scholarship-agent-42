@@ -8,7 +8,8 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=31" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=39" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/upgrade.css') }}?v=9" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
   <script>
     // Apply saved theme before paint so there's no flash (only if it was saved,
@@ -45,7 +46,7 @@
     </a>
     <div class="topbar-right">
       <div class="badges">
-        <img src="{{ url_for('static', filename='img/badges.png') }}?v=4"
+        <img src="{{ url_for('static', filename='img/badges.png') }}?v=5"
              alt="NAAC A+, NIRF, NBA, UGC, ABET accreditation badges"
              class="badge-strip" onerror="this.style.display='none'" />
       </div>
@@ -117,7 +118,16 @@
         <div class="scope-bar"><span class="scope-eye" aria-hidden="true">👁</span><span id="scope-note"></span></div>
       </div>
 
-      <div class="kpis dh-kpis" id="kpis" data-tilt><!-- filled by JS --></div>
+      <!-- Skeleton cards reserve the row's final size from first paint so the KPIs
+           fill in place instead of loading late and shoving the hero copy upward.
+           JS replaces these with live numbers (same markup, so no layout shift). -->
+      <div class="kpis dh-kpis" id="kpis" data-tilt>
+        <div class="kpi"><div class="num">&nbsp;</div><div class="lbl">Eligible matches</div></div>
+        <div class="kpi good"><div class="num">&nbsp;</div><div class="lbl">Covered</div></div>
+        <div class="kpi bad"><div class="num">&nbsp;</div><div class="lbl">Coverage gap</div></div>
+        <div class="kpi bad"><div class="num">&nbsp;</div><div class="lbl">Renewals at risk</div></div>
+        <div class="kpi bad"><div class="num">&nbsp;</div><div class="lbl">Reminders to suppress</div></div>
+      </div>
     </div>
     <div class="dh-fade" aria-hidden="true"></div>
   </section>
@@ -267,7 +277,9 @@
     </form>
   </div>
 
-  <script src="{{ url_for('static', filename='js/app.js') }}?v=16"></script>
+  <script src="{{ url_for('static', filename='js/app.js') }}?v=23"></script>
   <script src="{{ url_for('static', filename='js/consent.js') }}?v=3"></script>
+  <!-- visual upgrade layer — must load last; it overrides loaders on top of app.js -->
+  <script src="{{ url_for('static', filename='js/upgrade.js') }}?v=9"></script>
 </body>
 </html>

@@ -22,8 +22,8 @@ disbursements against fees. Runs alone today; plugs into the platform by changin
 - **No bluffing / fake claims** (e.g. "connected to real DB" as plain text). *Prove* it — live server
   clock, real row counts, provider name. Auth's Google account-picker (4 role accounts) is a
   deliberate demo that shows the multi-role model; keep it, don't wire real OAuth.
-- **Local DB (`localhost:5432`) is usually down** → a local "connection timeout" is NOT a prod bug;
-  prod uses Cloud SQL. Chrome blocks ports 5432/5060 for `http://` — use 8080+ for local headless checks.
+- **Local DB** connects to the *real* Cloud SQL via the Auth Proxy (see **Local DB** section). If the
+  proxy isn't running, `localhost:5432` is down and a "connection timeout" is NOT a prod bug.
 
 ## Stack / files
 - **Flask** `app.py` (thin routes) → **`scholarship_engine.py`** (deterministic logic) → **`db.py`** → Postgres.
@@ -47,12 +47,55 @@ disbursements against fees. Runs alone today; plugs into the platform by changin
 - Mascot = **AURA**, the animated 3D robot `static/img/robot.svg` (do NOT reintroduce the old "Buji").
 - Bump the `?v=N` query on any CSS/JS you edit (cache-bust for returning viewers).
 
+## Design guide — landing & dashboard (keep this look; it's the calibre judges see)
+Shared design language across both pages. Tokens: display font **Sora**, headings **Space Grotesk**,
+body **Inter**, mono **IBM Plex Mono**. Glass recipe = translucent white fill + 1px light border +
+`backdrop-filter: blur(...)` + soft drop shadow + inset top highlight. Motion is calm and premium
+(cubic-bezier ease-out, staggered), never bouncy.
+
+**Landing (`landing.html` / `landing.css`):** full-bleed drone-**video** hero (`campus.mp4`, poster
+`campus-hero.jpg`) under a deep-blue overlay; glass top nav (73px logo); the **AURA** robot mascot
+top-right of the hero; sections Coverage / The work / Platform / How it works; a dark Vignan footer
+(brand + accreditation `badges.png` + team + a subtle video credit line "YouTube: CRAK PRODUCTIONS").
+Intro animation is gated on the consent choice (`cc:consent`), immediate for returning visitors.
+
+**Dashboard (`index.html` / `style.css`) — the post-login "command deck":** the two pages **swap
+media** — dashboard hero is the campus **image** (`campus.webp`), landing is the video.
+- Hero stack (z-order): `.dh-bg` (campus image, `cover`, position `100% 100%`, slow Ken-Burns
+  `dhKen`, **no zoom**) → `.dh-veil` (left-weighted dark gradient so copy stays legible, campus
+  bright on the right) → glass `.platform-bar` (DB + consumes/feeds lineage) → `.dh-inner`
+  (role-switch top, **bottom-anchored** `.dh-copy` = eyebrow + headline + sub + scope, then the
+  3D glass **KPI cards**) → `.dh-fade` (fade to page bg).
+- KPI cards tilt in 3D on pointer-move (`--rx/--ry`), gold number = the coverage-gap/bad metric.
+- **Entrance = "assemble":** the campus image lands first, then overlay elements stagger in
+  (`dhAssemble`, delays ~0.54s→1.08s — a deliberate ~0.5s lead-in so it never feels like lag).
+  Reduced-motion disables it.
+- Sticky tabs pinned below the variable-height header (`--topbar-h` measured in JS); switching
+  panels does a directional slide (`asmUp/asmL/asmR`), never yanks scroll to top.
+- Chat launcher = big AURA robot with a glow disc + "Any doubts? Ask me!" bubble.
+
+**Non-negotiable motion rule — no layout jump.** Async content (KPIs, hero copy) must **reserve its
+final space before data arrives**: skeleton cards in the KPI row + `min-height` on the container,
+and `min-height` on `.dh-headline` (2 lines) / `.dh-sub` (3 lines) so filling real text doesn't
+shove the bottom-anchored copy upward. Any new async block gets the same treatment.
+
+**Perf rule.** DB access is pooled (`db.py` `ConnectionPool`, always-warm) — never reopen a
+connection per request. Hero/KPI fetches run in parallel (`Promise.all`), not sequential awaits.
+Locally the DB is the real Cloud SQL via the Auth Proxy (see below), so a fresh connect is slow;
+the pool + parallel fetches keep first paint ~1s instead of ~10s.
+
+## Local DB (verify locally against real data)
+No Docker/Postgres needed. Tunnel Cloud SQL to localhost with the proxy that ships with gcloud:
+`cloud-sql-proxy --port 5432 project-8dde1e00-67da-41c1-9d9:asia-south1:agent42-db`
+then run the app; `.env` `DATABASE_URL` points at `localhost:5432/platform` (real prod DB name is
+**`platform`**). Chrome blocks ports 5432/5060 for `http://` — use 8080+ for headless checks.
+
 ## Deploy
 `gcloud run deploy scholarship-agent-42 --source . --project=project-8dde1e00-67da-41c1-9d9 --region=asia-south1 --quiet`
 `.env` is git-ignored + `.gcloudignore`-excluded, so prod Cloud SQL + Vertex env survive the build.
 Prefer a quick local look first; ask before deploying if unsure.
 
 ## Git
-Repo: https://github.com/mounishsai-ai/scholarship-agent-42 · Team: Mounish Sai
-(`mounishsai.ai@gmail.com`), Ch. V. K. Ranjith Kumar (`vu.241fa04806@gmail.com`).
-End commit messages with the Claude co-author trailer.
+Commit granularly, alternating the two teammates (Mounish Sai `mounishsai.ai@gmail.com`,
+Ch. V. K. Ranjith Kumar `vu.241fa04806@gmail.com`), each ending with the Claude co-author trailer.
+Repo: https://github.com/mounishsai-ai/scholarship-agent-42
