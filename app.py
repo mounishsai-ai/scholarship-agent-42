@@ -8,12 +8,16 @@ engine function answers the question and phrases the result, but every number
 still comes from the engine, so the app works with no API key and no internet.
 """
 import os
+import re
 import json
+import gzip
 import base64
+from functools import wraps
 from flask import (Flask, render_template, jsonify, request, session,
                    redirect, url_for)
 
 import scholarship_engine as engine
+import accounts
 from db import db_configured
 
 app = Flask(__name__)
@@ -74,15 +78,33 @@ def dashboard():
 
 @app.route("/login", methods=["POST"])
 def login():
-    """Set a session flag and enter the dashboard. Modes: google, guest, email,
-    phone, regid, empid. Visual entry point only — no credentials are checked or
-    stored, and the dashboard is never gated on this."""
+    """Enter the dashboard. Modes: google, guest, email, phone, regid, empid.
+
+    Register-number sign-in is real: the register number and password are checked
+    against identity.app_user + identity.agent42_credential (bcrypt), and a match is
+    locked to that student's own record. The other modes remain the demo entry
+    points (no credentials checked), and the dashboard is never gated on them."""
     mode = (request.form.get("mode") or "guest").strip()
     ident = (request.form.get("identifier") or "").strip()
     role = (request.form.get("role") or "").strip().upper()
     valid = {"ACCOUNTS", "HOD", "ACCT", "STUDENT"}
     role_names = {"ACCOUNTS": "Scholarship Officer", "HOD": "Head of Department",
                   "ACCT": "Accounts Office", "STUDENT": "Student"}
+    if mode == "regid":
+        try:
+            account = accounts.verify_student(ident, request.form.get("secret") or "")
+        except Exception:  # noqa: BLE001 — DB down: say so rather than a 500
+            return redirect(url_for("index", signin="regid", error="unavailable", regno=ident))
+        if not account:
+            return redirect(url_for("index", signin="regid", error="invalid", regno=ident))
+        session.clear()
+        session.update({
+            "signed_in": True, "login_mode": "regid", "role": "STUDENT",
+            "can_switch": False, "user_name": account["full_name"],
+            "role_student": account["roll_no"], "user_id": account["user_id"],
+            "default_password": account["is_default"],
+        })
+        return redirect(url_for("dashboard"))
     session["signed_in"] = True
     session["login_mode"] = mode
     if mode == "guest":
@@ -99,6 +121,36 @@ def login():
         session["user_name"] = ident or role_names[r]
         session["role_student"] = (request.form.get("student") or "23CSE002") if r == "STUDENT" else ""
     return redirect(url_for("dashboard"))
+
+
+@app.route("/api/account")
+def api_account():
+    """Who is signed in, and whether they still use the default password."""
+    if session.get("login_mode") != "regid":
+        return jsonify({"signed_in": bool(session.get("signed_in")), "can_change_password": False})
+    roll = session.get("role_student", "")
+    try:
+        default = accounts.is_default_password(roll)
+    except Exception:  # noqa: BLE001
+        default = bool(session.get("default_password"))
+    return jsonify({"signed_in": True, "roll_no": roll, "name": session.get("user_name", ""),
+                    "can_change_password": True, "default_password": default})
+
+
+@app.route("/api/account/password", methods=["POST"])
+def api_change_password():
+    if session.get("login_mode") != "regid" or not session.get("role_student"):
+        return jsonify({"error": "Sign in with your register number to change your password."}), 403
+    data = request.get_json(force=True, silent=True) or {}
+    try:
+        result = accounts.change_password(session["role_student"],
+                                          data.get("current") or "", data.get("new") or "")
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Could not change the password: {exc}"}), 500
+    if result.get("error"):
+        return jsonify(result), 400
+    session["default_password"] = False
+    return jsonify(result)
 
 
 @app.route("/logout")
@@ -126,6 +178,53 @@ def cookies():
 
 
 # --------------------------------------------------------------------------
+# Role scoping. A register-number sign-in is a real student session: the server
+# (not just the page) limits it to that student's own rows.
+# --------------------------------------------------------------------------
+def _student_scope():
+    """The roll number a signed-in student is locked to, else None."""
+    if session.get("role") == "STUDENT" and not session.get("can_switch", True):
+        return session.get("role_student") or None
+    return None
+
+
+def _staff_only(fn):
+    @wraps(fn)
+    def wrapper(*a, **kw):
+        if _student_scope():
+            return jsonify({"error": "This view is restricted to the Scholarship Officer, "
+                                     "Head of Department and Accounts."}), 403
+        return fn(*a, **kw)
+    return wrapper
+
+
+def _own_student_id(student_id: str) -> bool:
+    roll = _student_scope()
+    if not roll:
+        return True
+    from db import get_conn
+    with get_conn() as conn:
+        me = engine.get_student_by_roll(conn, roll)
+    return bool(me and me["student_id"] == student_id)
+
+
+@app.after_request
+def _compress(resp):
+    """gzip JSON responses: the 1000-student matrix shrinks ~10x on the wire."""
+    if (resp.mimetype == "application/json" and resp.status_code == 200
+            and not resp.direct_passthrough
+            and "gzip" in (request.headers.get("Accept-Encoding") or "").lower()
+            and "Content-Encoding" not in resp.headers):
+        body = resp.get_data()
+        if len(body) > 1024:
+            resp.set_data(gzip.compress(body, compresslevel=5))
+            resp.headers["Content-Encoding"] = "gzip"
+            resp.headers["Content-Length"] = str(len(resp.get_data()))
+            resp.headers.add("Vary", "Accept-Encoding")
+    return resp
+
+
+# --------------------------------------------------------------------------
 # API - each route calls exactly one engine function
 # --------------------------------------------------------------------------
 @app.route("/api/health")
@@ -148,6 +247,7 @@ def _list_schemes():
 
 
 @app.route("/api/scheme", methods=["POST"])
+@_staff_only
 def api_create_scheme():
     data = request.get_json(force=True)
     return _safe(lambda: engine.create_scheme(data))
@@ -160,71 +260,109 @@ def api_students():
 
 def _students():
     from db import get_conn
+    roll = _student_scope()
     with get_conn() as conn:
+        if roll:
+            me = engine.get_student_by_roll(conn, roll)
+            return {"students": [me] if me else []}
         return {"students": engine.get_students(conn)}
 
 
 @app.route("/api/matrix")
 def api_matrix():
-    return _safe(engine.match_matrix)
+    return _safe(lambda: engine.match_matrix(only_roll=_student_scope()))
+
+
+def _mine(student_id, fn):
+    if not _own_student_id(student_id):
+        return jsonify({"error": "You can only open your own record."}), 403
+    return _safe(fn)
 
 
 @app.route("/api/student/<student_id>/eligibility")
 def api_student_eligibility(student_id):
-    return _safe(lambda: engine.match_student(student_id))
+    return _mine(student_id, lambda: engine.match_student(student_id))
 
 
 @app.route("/api/student/<student_id>/pack")
 def api_application_pack(student_id):
-    return _safe(lambda: engine.application_pack(student_id))
+    return _mine(student_id, lambda: engine.application_pack(student_id))
 
 
 @app.route("/api/notify/<student_id>", methods=["POST"])
+@_staff_only
 def api_notify(student_id):
     return _safe(lambda: engine.notify_student(student_id))
 
 
 @app.route("/api/applications")
 def api_applications():
-    return _safe(lambda: {"applications": engine.applications()})
+    def run():
+        apps = engine.applications()
+        roll = _student_scope()
+        if roll:
+            apps = [a for a in apps if a["roll_no"] == roll]
+        return {"applications": apps}
+    return _safe(run)
 
 
 @app.route("/api/renewal-risk")
 def api_renewal_risk():
-    return _safe(engine.renewal_risk)
+    def run():
+        d = engine.renewal_risk()
+        roll = _student_scope()
+        if roll:
+            d["results"] = [r for r in d["results"] if r["student"]["roll_no"] == roll]
+            d["at_risk_count"] = sum(1 for r in d["results"]
+                                     if r["risk_level"] in ("AT_RISK", "LIKELY_LOSS"))
+        return d
+    return _safe(run)
 
 
 @app.route("/api/reconciliation")
 def api_reconciliation():
-    return _safe(engine.reconcile)
+    def run():
+        d = engine.reconcile()
+        roll = _student_scope()
+        if roll:
+            d["results"] = [r for r in d["results"] if r["roll_no"] == roll]
+            d["suppress_count"] = sum(1 for r in d["results"] if r["recommend_suppress"])
+        return d
+    return _safe(run)
 
 
 @app.route("/api/coverage")
+@_staff_only
 def api_coverage():
     return _safe(engine.coverage_report)
 
 
 @app.route("/api/flags")
+@_staff_only
 def api_flags():
     return _safe(lambda: {"flags": engine.open_flags()})
 
 
 @app.route("/api/runs")
+@_staff_only
 def api_runs():
     return _safe(lambda: {"runs": engine.recent_runs()})
 
 
 @app.route("/api/integrations")
+@_staff_only
 def api_integrations():
     return _safe(engine.integration_report)
 
 
 @app.route("/api/approvals")
+@_staff_only
 def api_approvals():
-    return _safe(lambda: {"approvals": engine.pending_approvals()})
+    return _safe(engine.pending_approvals)
 
 
 @app.route("/api/approve", methods=["POST"])
+@_staff_only
 def api_approve():
     data = request.get_json(force=True)
     return _safe(lambda: engine.approve_output(
@@ -232,6 +370,7 @@ def api_approve():
 
 
 @app.route("/api/suppress-reminder", methods=["POST"])
+@_staff_only
 def api_suppress():
     data = request.get_json(force=True)
     return _safe(lambda: engine.suppress_reminder(
@@ -248,6 +387,8 @@ def api_chat():
     image = data.get("image")  # optional data: URL
     role = (data.get("role") or "").upper()
     viewer = (data.get("viewer") or "").upper()
+    if _student_scope():               # a real student session can't claim another identity
+        role, viewer = "STUDENT", _student_scope().upper()
     ai_ok = data.get("ai_consent", True)  # cookie-consent gate for the AI features
     if not question and not image:
         return jsonify({"reply": "Ask me about scholarships, eligibility, renewals or fees."})
@@ -263,14 +404,14 @@ def api_chat():
                 return jsonify({"reply": "Turn on “AI features” in cookie settings to read images.",
                                 "intent": "restricted", "data": {}})
             return jsonify({"reply": _vision_answer(question, image), "intent": "image", "data": {}})
-        import re
         q = question
         # A signed-in student saying "I / me / my" means their own record.
         if role == "STUDENT" and viewer and not re.search(r"\d{2}\s*cse\s*\d{3}", question.lower()):
             q = question + " " + viewer
         intent, payload = _route_question(q)
         # If the visitor declined the AI cookie, answer deterministically (no Gemini).
-        reply = _phrase(question, intent, payload) if ai_ok else _template_reply(intent, payload)
+        reply = (_phrase(question, intent, payload, viewer if role == "STUDENT" else None)
+                 if ai_ok else _template_reply(intent, payload))
         return jsonify({"reply": reply, "intent": intent, "data": payload})
     except Exception as exc:  # noqa: BLE001
         return jsonify({"reply": f"Sorry, I could not answer that: {exc}", "error": str(exc)})
@@ -281,7 +422,6 @@ def _student_restriction(question: str, role: str, viewer: str):
     or officer/HoD-only is refused with a clear message (what evaluators look for)."""
     if role != "STUDENT":
         return None
-    import re
     ql = " " + question.lower() + " "
     m = re.search(r"(\d{2})\s*cse\s*(\d{3})", ql)
     if m:
@@ -324,7 +464,6 @@ def _route_question(q: str):
     """Map a question to one engine function. Rule-based (typo-tolerant), so it
     needs no LLM. Anything unrecognised returns a helpful 'unknown' reply rather
     than a wrong confident answer."""
-    import re
     ql = " " + q.lower().strip() + " "
     has = lambda *ws: any(w in ql for w in ws)
 
@@ -389,10 +528,8 @@ def _route_question(q: str):
 def _student_id_for_roll(roll: str):
     from db import get_conn
     with get_conn() as conn:
-        for s in engine.get_students(conn):
-            if s["roll_no"] == roll:
-                return s["student_id"]
-    return None
+        s = engine.get_student_by_roll(conn, roll)
+    return s["student_id"] if s else None
 
 
 def _student_facts(sid: str):
@@ -401,14 +538,29 @@ def _student_facts(sid: str):
         return engine.get_facts(conn, sid)
 
 
-def _chat_context() -> dict:
+CHAT_STUDENT_LIMIT = 40   # beyond this, the model gets per-scheme counts, not a roster
+
+
+def _chat_context(question: str = "", viewer: str | None = None) -> dict:
     """Compact, machine-true snapshot for the LLM: every scheme (with rules and
-    documents) and every student (with the schemes they qualify for). Lets Gemini
-    answer list/edge questions without ever inventing a fact."""
+    documents), cohort counts, and the students the question is about (or the
+    whole roster when it is small). A student session only ever sees itself.
+    Lets Gemini answer list/edge questions without ever inventing a fact."""
     from db import get_conn
     with get_conn() as conn:
-        students = engine.get_students(conn)
         schemes = engine.get_schemes(conn)
+        if viewer:
+            me = engine.get_student_by_roll(conn, viewer)
+            students, cohort = ([me] if me else []), None
+        else:
+            cohort = engine.get_students(conn)
+            rolls = {f"{a}CSE{b}" for a, b in re.findall(r"(\d{2})\s*cse\s*(\d{3})", question.lower())}
+            if rolls:
+                students = [s for s in cohort if s["roll_no"] in rolls]
+            elif len(cohort) <= CHAT_STUDENT_LIMIT:
+                students = cohort
+            else:
+                students = []
     sc = [{"code": s["code"], "name": s["name"], "provider_type": s["provider_type"],
            "benefit_amount": s["benefit_amount"], "renewable": s["renewal_required"],
            "eligibility": s["eligibility_criteria"], "documents": s["required_documents"],
@@ -420,12 +572,20 @@ def _chat_context() -> dict:
         st.append({"roll": f["roll_no"], "name": f["full_name"], "category": f["social_category"],
                    "gender": f["gender"], "annual_income": f["annual_income"], "cgpa": f["cgpa"],
                    "attendance_pct": f["attendance_pct"], "eligible_for": elig})
-    return {"schemes": sc, "students": st,
-            "total_eligible_matches": sum(len(s["eligible_for"]) for s in st),
-            "student_count": len(students)}
+    ctx = {"schemes": sc, "students": st}
+    if cohort is not None:
+        ctx["student_count"] = len(cohort)
+        ctx["eligible_students_per_scheme"] = {
+            s["code"]: sum(1 for f in cohort
+                           if engine.evaluate(f, s["eligibility_criteria"])["is_eligible"])
+            for s in schemes}
+        if not st:
+            ctx["note"] = ("The roster is too large to list; name a register number "
+                           "(e.g. 23CSE001) for one student's details.")
+    return ctx
 
 
-def _phrase(question: str, intent: str, payload: dict) -> str:
+def _phrase(question: str, intent: str, payload: dict, viewer: str | None = None) -> str:
     """Phrase the answer. With Gemini configured, answer freely over the full
     context (handles lists and edge cases); offline, use the deterministic
     template. Every number/name must come from the provided facts."""
@@ -434,7 +594,7 @@ def _phrase(question: str, intent: str, payload: dict) -> str:
     if client is None:
         return fallback
     try:
-        ctx = _chat_context()
+        ctx = _chat_context(question, viewer)
         prompt = (
             "You are the Scholarship Agent for Vignan University, CSE. Answer the user's "
             "question using ONLY the facts in the JSON below. Never invent a number, name, "
