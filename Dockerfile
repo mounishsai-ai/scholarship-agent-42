@@ -20,7 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 COPY --from=builder /install /usr/local
-ARG CACHEBUST=20260917T1015
 COPY . .
 
 ENV PORT=8080
