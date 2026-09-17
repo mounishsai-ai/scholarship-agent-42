@@ -14,6 +14,10 @@ from psycopg.types.json import Jsonb
 from db import get_conn, AGENT_USER_ID
 
 AGENT_ID = "a4200000-0000-0000-0000-0000000000a4"   # A42_SCHOLARSHIP (see seed.sql)
+# human_review.reviewer_user_id is mandatory: the signed-in reviewer's account is
+# not wired to identity yet, so decisions are recorded against the seeded
+# Scholarship Officer account unless AGENT_USER_ID names another.
+REVIEWER_USER_ID = AGENT_USER_ID or "a4200000-0000-0000-0000-0000000000ff"
 AGENT_VERSION = "1.0"
 ACADEMIC_YEAR_ID = "a4200000-0000-0000-0000-000000000020"
 
@@ -240,7 +244,7 @@ def finish_run(conn, run_id, status="SUCCEEDED"):
         cur.execute(
             """UPDATE agentops.agent_run
                SET status = %s, finished_at = now(),
-                   latency_ms = (EXTRACT(EPOCH FROM (now() - started_at)) * 1000)::int
+                   latency_ms = (EXTRACT(EPOCH FROM (clock_timestamp() - started_at)) * 1000)::int
                WHERE agent_run_id = %s""",
             (status, run_id),
         )
@@ -528,7 +532,7 @@ def reconcile() -> dict:
                 """SELECT app.student_id, per.full_name, st.roll_no,
                           app.status AS app_status, app.sanctioned_amount, app.disbursed_amount,
                           sc.name AS scheme_name,
-                          fd.fee_demand_id, fd.net_payable, fd.paid_amount, fd.outstanding,
+                          fd.fee_demand_id, fd.gross_amount, fd.net_payable, fd.paid_amount, fd.outstanding,
                           fd.scholarship_expected,
                           rd.reminder_dispatch_id, rd.segment, rd.suppressed, rd.escalation_level
                    FROM finance.scholarship_application app
@@ -544,8 +548,19 @@ def reconcile() -> dict:
         run_id = start_run(conn, "SCHEDULED", {"scope": "disbursement_reconciliation"},
                            "Reconcile scholarship disbursements against fee ledger")
         record_input(conn, run_id, "finance", "scholarship_application", len(rows))
+        # What the fee ledger (Agent 40) should expect from scholarships, per student.
+        award_total: dict[str, float] = {}
+        seen_award = set()
+        for r in rows:
+            key = (str(r["student_id"]), r["scheme_name"])
+            if key in seen_award:
+                continue
+            seen_award.add(key)
+            award_total[str(r["student_id"])] = award_total.get(str(r["student_id"]), 0) + \
+                _jsonable(r["sanctioned_amount"] or r["disbursed_amount"] or 0)
         results = []
         suppress_count = 0
+        ledger_students = set()
         for r in rows:
             covered = _jsonable(r["disbursed_amount"] or r["sanctioned_amount"] or 0)
             outstanding = _jsonable(r["outstanding"] or 0)
@@ -558,9 +573,17 @@ def reconcile() -> dict:
                     f"{r['scheme_name']} covers Rs {covered:,.0f} against an outstanding of "
                     f"Rs {outstanding:,.0f}. Per the fee-reminder rule, reminders MUST be "
                     f"suppressed where a sanctioned scholarship covers the dues.")
+            expected_now = _jsonable(r["scholarship_expected"])
+            # the ledger can never expect more than the fee itself
+            should_expect = min(award_total.get(str(r["student_id"]), 0),
+                                _jsonable(r["gross_amount"]) if r["gross_amount"] is not None else float("inf"))
+            ledger_mismatch = bool(r["fee_demand_id"]) and float(expected_now or 0) != float(should_expect)
+            if ledger_mismatch:
+                ledger_students.add(str(r["student_id"]))
             results.append({
                 "student_id": str(r["student_id"]), "roll_no": r["roll_no"],
                 "full_name": r["full_name"], "scheme_name": r["scheme_name"],
+                "ledger_expected": should_expect, "ledger_mismatch": ledger_mismatch,
                 "app_status": r["app_status"], "covered_amount": covered,
                 "outstanding": outstanding,
                 "scholarship_expected": _jsonable(r["scholarship_expected"]),
@@ -571,15 +594,72 @@ def reconcile() -> dict:
                 "recommendation": recommendation,
             })
         # Anything needing a human first; the rest are reconciled and quiet.
-        results.sort(key=lambda r: (not r["recommend_suppress"], not r["active_reminder"],
-                                    r["roll_no"]))
+        results.sort(key=lambda r: (not r["recommend_suppress"], not r["ledger_mismatch"],
+                                    not r["active_reminder"], r["roll_no"]))
+        summary = (f"Reconciled {len(results)} live scholarships; recommended suppressing "
+                   f"{suppress_count} fee reminder(s) already covered by a scholarship"
+                   + (f" and syncing {len(ledger_students)} fee ledger entr"
+                      f"{'y' if len(ledger_students) == 1 else 'ies'}" if ledger_students else "") + ".")
+        # One open recommendation is enough: a page refresh must not queue the same
+        # request for a human again and again.
+        with conn.cursor() as cur:
+            # A newer pass supersedes older requests: expire any pending
+            # recommendation that no longer matches, and duplicates of the one that does.
+            cur.execute("""UPDATE agentops.agent_output o SET approval_status = 'EXPIRED'
+                           FROM agentops.agent_run r
+                           WHERE r.agent_run_id = o.agent_run_id AND r.agent_id = %s
+                             AND o.output_type = 'RECOMMENDATION' AND o.approval_status = 'PENDING'
+                             AND (o.reasoning_summary <> %s OR o.agent_output_id <> (
+                                  SELECT o2.agent_output_id FROM agentops.agent_output o2
+                                  JOIN agentops.agent_run r2 ON r2.agent_run_id = o2.agent_run_id
+                                  WHERE r2.agent_id = %s AND o2.output_type = 'RECOMMENDATION'
+                                    AND o2.approval_status = 'PENDING' AND o2.reasoning_summary = %s
+                                  ORDER BY o2.created_at DESC LIMIT 1))""",
+                        (AGENT_ID, summary, AGENT_ID, summary))
+            cur.execute("""SELECT 1 FROM agentops.agent_output o
+                           JOIN agentops.agent_run r ON r.agent_run_id = o.agent_run_id
+                           WHERE r.agent_id = %s AND o.output_type = 'RECOMMENDATION'
+                             AND o.approval_status = 'PENDING' AND o.reasoning_summary = %s
+                           LIMIT 1""", (AGENT_ID, summary))
+            already_open = cur.fetchone() is not None
         write_output(conn, run_id, "RECOMMENDATION",
-                     {"reconciled": len(results), "reminders_to_suppress": suppress_count},
-                     f"Reconciled {len(results)} live scholarships; recommended suppressing "
-                     f"{suppress_count} fee reminder(s) already covered by a scholarship.",
-                     requires_approval=suppress_count > 0)
+                     {"reconciled": len(results), "reminders_to_suppress": suppress_count,
+                      "ledger_to_sync": len(ledger_students)},
+                     summary,
+                     requires_approval=(suppress_count > 0 or bool(ledger_students)) and not already_open)
         finish_run(conn, run_id)
-        return {"results": results, "suppress_count": suppress_count, "run_id": run_id}
+        return {"results": results, "suppress_count": suppress_count,
+                "ledger_sync_count": len(ledger_students), "run_id": run_id}
+
+
+def sync_fee_ledger(reviewer_note: str = "") -> dict:
+    """Officer-approved action (feeds Agent 40): set each open fee demand's
+    scholarship_expected to the live awards actually sanctioned for that student,
+    so the ledger — and every reminder built on it — agrees with the scholarships."""
+    with get_conn() as conn:
+        run_id = start_run(conn, "USER", {"scope": "fee_ledger_sync"},
+                           "Sync scholarship_expected on the fee ledger after officer approval")
+        with conn.cursor() as cur:
+            cur.execute(
+                """WITH awards AS (
+                       SELECT a.student_id, a.academic_year_id,
+                              sum(coalesce(a.sanctioned_amount, a.disbursed_amount, 0)) AS total
+                       FROM finance.scholarship_application a
+                       WHERE a.status IN ('SANCTIONED','DISBURSED')
+                       GROUP BY a.student_id, a.academic_year_id)
+                   UPDATE finance.fee_demand fd
+                   SET scholarship_expected = least(aw.total, fd.gross_amount)
+                   FROM awards aw
+                   WHERE aw.student_id = fd.student_id AND aw.academic_year_id = fd.academic_year_id
+                     AND fd.scholarship_expected <> least(aw.total, fd.gross_amount)
+                   RETURNING fd.student_id""")
+            changed = len(cur.fetchall())
+        record_input(conn, run_id, "finance", "fee_demand", changed)
+        write_output(conn, run_id, "ACTION_PROPOSAL", {"fee_demands_updated": changed},
+                     f"Fee ledger synced after officer approval: {changed} fee demand(s) now "
+                     f"expect the scholarship actually sanctioned. " + (reviewer_note or ""))
+        finish_run(conn, run_id)
+        return {"ok": True, "updated": changed, "run_id": run_id}
 
 
 def suppress_reminder(reminder_dispatch_id: str, reviewer_note: str = "") -> dict:
@@ -605,6 +685,38 @@ def suppress_reminder(reminder_dispatch_id: str, reviewer_note: str = "") -> dic
         return {"ok": bool(row), "run_id": run_id}
 
 
+# An application is "stalled" once it has sat at one stage longer than this.
+STALL_DAYS = {"SUBMITTED": 30, "INSTITUTION_VERIFIED": 45, "SANCTIONED": 60}
+
+
+def draft_follow_ups() -> dict:
+    """Follow up on stalled cases: draft one follow-up per stalled application
+    (never twice), each waiting for officer approval before anything is sent."""
+    stalled = [a for a in applications() if a["stalled"] and not a["follow_up_drafted"]]
+    next_step = {"SUBMITTED": "the college verification desk",
+                 "INSTITUTION_VERIFIED": "the scheme portal / sanctioning authority",
+                 "SANCTIONED": "the disbursing bank / treasury (DBT)"}
+    with get_conn() as conn:
+        run_id = start_run(conn, "SCHEDULED", {"scope": "stalled_applications"},
+                           "Draft follow-ups for stalled scholarship applications")
+        record_input(conn, run_id, "finance", "scholarship_application", len(stalled))
+        with conn.cursor() as cur:
+            cur.executemany(
+                """INSERT INTO agentops.agent_output
+                     (agent_run_id, output_type, subject_type, subject_id, payload,
+                      reasoning_summary, confidence, requires_approval, approval_status)
+                   VALUES (%s, 'ACTION_PROPOSAL', 'STUDENT', %s, %s, %s, 0.99, true, 'PENDING')""",
+                [(run_id, a["scholarship_application_id"],
+                  Jsonb({"application": a["external_application_no"], "roll_no": a["roll_no"],
+                         "status": a["status"], "days_waiting": a["days_waiting"]}),
+                  f"Follow up {a['external_application_no'] or a['scheme_code']} for {a['full_name']} "
+                  f"({a['roll_no']}): {a['status'].replace('_', ' ').lower()} for {a['days_waiting']} days — "
+                  f"chase {next_step[a['status']]}.")
+                 for a in stalled])
+        finish_run(conn, run_id)
+    return {"drafted": len(stalled), "run_id": run_id}
+
+
 def applications() -> list[dict]:
     with get_conn() as conn, conn.cursor() as cur:
         cur.execute(
@@ -613,7 +725,12 @@ def applications() -> list[dict]:
                       sc.name AS scheme_name, sc.code AS scheme_code, sc.provider_type,
                       app.status, app.external_application_no, app.applied_on,
                       app.sanctioned_amount, app.disbursed_amount, app.disbursed_on,
-                      app.rejection_reason
+                      app.rejection_reason,
+                      (current_date - app.applied_on) AS days_waiting,
+                      EXISTS (SELECT 1 FROM agentops.agent_output o
+                              WHERE o.output_type = 'ACTION_PROPOSAL'
+                                AND o.subject_id = app.scholarship_application_id
+                                AND o.approval_status IN ('PENDING','APPROVED')) AS follow_up_drafted
                FROM finance.scholarship_application app
                JOIN finance.scholarship_scheme sc ON sc.scholarship_scheme_id = app.scholarship_scheme_id
                JOIN people.student st ON st.student_id = app.student_id
@@ -624,6 +741,9 @@ def applications() -> list[dict]:
     for r in rows:
         r["scholarship_application_id"] = str(r["scholarship_application_id"])
         r["student_id"] = str(r["student_id"])
+        waiting = r["days_waiting"]
+        r["stalled"] = bool(r["status"] in STALL_DAYS and waiting is not None
+                            and waiting > STALL_DAYS[r["status"]])
         r["sanctioned_amount"] = _jsonable(r["sanctioned_amount"])
         r["disbursed_amount"] = _jsonable(r["disbursed_amount"])
         for d in ("applied_on", "disbursed_on"):
@@ -698,7 +818,28 @@ def coverage_report() -> dict:
                    WHERE status = 'REJECTED' AND rejection_reason IS NOT NULL
                    GROUP BY rejection_reason ORDER BY n DESC""")
             rejections = cur.fetchall()
+        with conn.cursor() as cur:
+            cur.execute(
+                """SELECT count(*) FILTER (WHERE status IN ('SANCTIONED','DISBURSED')) AS awards,
+                          coalesce(sum(sanctioned_amount) FILTER (WHERE status IN ('SANCTIONED','DISBURSED')), 0) AS sanctioned,
+                          coalesce(sum(disbursed_amount) FILTER (WHERE status = 'DISBURSED'), 0) AS disbursed,
+                          count(*) FILTER (WHERE status = 'SANCTIONED') AS awaiting,
+                          coalesce(sum(sanctioned_amount) FILTER (WHERE status = 'SANCTIONED'), 0) AS awaiting_amount,
+                          round(avg(disbursed_on - applied_on) FILTER (WHERE status = 'DISBURSED')) AS avg_days,
+                          count(*) FILTER (WHERE status = 'REJECTED') AS rejected,
+                          count(*) AS applications
+                   FROM finance.scholarship_application WHERE academic_year_id = %s""",
+                (ACADEMIC_YEAR_ID,))
+            dsb = {k: _jsonable(v) for k, v in cur.fetchone().items()}
+            cur.execute(
+                """SELECT sc.code AS scheme_code, count(*) AS n
+                   FROM finance.scholarship_application a
+                   JOIN finance.scholarship_scheme sc USING (scholarship_scheme_id)
+                   WHERE a.status = 'REJECTED' GROUP BY sc.code ORDER BY n DESC""")
+            rej_by_scheme = cur.fetchall()
         return {
+            "disbursement": dsb,
+            "rejections_by_scheme": rej_by_scheme,
             "per_scheme": per_scheme,
             "total_eligible": total_eligible,
             "total_covered": total_covered,
@@ -750,7 +891,7 @@ def pending_approvals(limit: int = 50) -> dict:
     for r in rows:
         r["agent_output_id"] = str(r["agent_output_id"])
         r["created_at"] = r["created_at"].isoformat() if r["created_at"] else None
-    return {"approvals": rows, "total": total}
+    return {"approvals": rows, "total": total, "by_type": pending_counts()}
 
 
 def approve_output(agent_output_id: str, decision: str, note: str = "") -> dict:
@@ -765,8 +906,42 @@ def approve_output(agent_output_id: str, decision: str, note: str = "") -> dict:
                 """INSERT INTO agentops.human_review
                      (agent_output_id, reviewer_user_id, decision, reason)
                    VALUES (%s, %s, %s, %s)""",
-                (agent_output_id, AGENT_USER_ID or None, decision, note or None))
+                (agent_output_id, REVIEWER_USER_ID, decision, note or None))
         return {"ok": True, "status": status}
+
+
+BULK_APPROVABLE = {"ALERT": "student notices", "ACTION_PROPOSAL": "follow-ups"}
+
+
+def approve_bulk(output_type: str, note: str = "") -> dict:
+    """A human approves every pending item of one kind at once (notices and
+    follow-ups only — money-moving recommendations stay one at a time)."""
+    if output_type not in BULK_APPROVABLE:
+        return {"error": "Only student notices and follow-ups can be approved in bulk."}
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            """UPDATE agentops.agent_output o SET approval_status = 'APPROVED'
+               FROM agentops.agent_run r
+               WHERE r.agent_run_id = o.agent_run_id AND r.agent_id = %s
+                 AND o.output_type = %s AND o.approval_status = 'PENDING'
+               RETURNING o.agent_output_id""", (AGENT_ID, output_type))
+        ids = [x["agent_output_id"] for x in cur.fetchall()]
+        cur.executemany(
+            """INSERT INTO agentops.human_review (agent_output_id, reviewer_user_id, decision, reason)
+               VALUES (%s, %s, 'APPROVE', %s)""",
+            [(i, REVIEWER_USER_ID, note or f"Bulk approval of {BULK_APPROVABLE[output_type]}")
+             for i in ids])
+    return {"ok": True, "approved": len(ids)}
+
+
+def pending_counts() -> dict:
+    with get_conn() as conn, conn.cursor() as cur:
+        cur.execute(
+            """SELECT o.output_type, count(*) AS n FROM agentops.agent_output o
+               JOIN agentops.agent_run r ON r.agent_run_id = o.agent_run_id
+               WHERE r.agent_id = %s AND o.approval_status = 'PENDING'
+               GROUP BY o.output_type""", (AGENT_ID,))
+        return {x["output_type"]: x["n"] for x in cur.fetchall()}
 
 
 def recent_runs(limit: int = 15) -> list[dict]:
@@ -858,6 +1033,60 @@ def create_scheme(data: dict) -> dict:
         return {"ok": True, "scheme_id": sid, "code": code, "name": name}
 
 
+def update_scheme(code: str, data: dict) -> dict:
+    """Officer action: revise a scheme for the new cycle (window, amount, documents,
+    rules, renewal) or retire / reinstate it. Every student is re-matched on the
+    next read, and the change is logged."""
+    code = (code or "").strip().upper()
+    sets, params = [], []
+    if "is_active" in data:
+        sets.append("is_active = %s"); params.append(bool(data["is_active"]))
+    for f in ("name", "provider_type", "provider_name", "benefit_type"):
+        if data.get(f):
+            sets.append(f"{f} = %s"); params.append(data[f])
+    for f in ("application_opens", "application_closes"):
+        if f in data:
+            sets.append(f"{f} = %s"); params.append(data[f] or None)
+    if "benefit_amount" in data:
+        try:
+            amt = float(data["benefit_amount"]) if data["benefit_amount"] not in (None, "") else None
+        except (TypeError, ValueError):
+            return {"error": "Benefit amount must be a number."}
+        sets.append("benefit_amount = %s"); params.append(amt)
+    if "required_documents" in data:
+        docs = [d.strip() for d in (data.get("required_documents") or "").split(",") if d.strip()]
+        sets.append("required_documents = %s"); params.append(docs or None)
+    if "rules" in data:
+        rules = [{"field": r["field"], "op": r["op"], "value": _coerce(r["op"], r["value"])}
+                 for r in data.get("rules") or []
+                 if r.get("field") and r.get("op") and r.get("value") not in (None, "")]
+        sets.append("eligibility_criteria = %s"); params.append(Jsonb({"all": rules}))
+    if "renewal_required" in data:
+        ren = bool(data["renewal_required"])
+        sets.append("renewal_required = %s"); params.append(ren)
+        sets.append("renewal_criteria = coalesce(CASE WHEN %s THEN renewal_criteria END, %s)")
+        params.extend([ren, Jsonb({"all": [{"field": "attendance_pct", "op": "gte", "value": 75}]})
+                       if ren else None])
+    if not sets:
+        return {"error": "Nothing to update."}
+    with get_conn() as conn:
+        run_id = start_run(conn, "USER", {"scheme_code": code}, f"Update scheme {code}")
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE finance.scholarship_scheme SET {', '.join(sets)} "
+                        f"WHERE code = %s RETURNING scholarship_scheme_id, name, is_active",
+                        params + [code])
+            row = cur.fetchone()
+        if not row:
+            return {"error": f"No scheme with code {code}."}
+        changed = sorted(k for k in data if k != "code")
+        write_output(conn, run_id, "ACTION_PROPOSAL",
+                     {"scheme_code": code, "changed": changed},
+                     f"Scheme {row['name']} ({code}) updated by the Scholarship Officer: "
+                     f"{', '.join(changed)}." + ("" if row["is_active"] else " Scheme is retired."))
+        finish_run(conn, run_id)
+    return {"ok": True, "code": code, "is_active": row["is_active"]}
+
+
 def _rupees(n):
     return "—" if n in (None, "") else "₹" + format(int(float(n)), ",d")
 
@@ -877,6 +1106,12 @@ def application_pack(student_id: str) -> dict:
             "Annual family income": _rupees(facts["annual_income"]),
             "CGPA": facts["cgpa"], "Attendance": f"{facts['attendance_pct']}%",
         }
+        with conn.cursor() as cur:
+            cur.execute("""SELECT scholarship_scheme_id, status FROM finance.scholarship_application
+                           WHERE student_id = %s""", (student_id,))
+            applied = {str(r["scholarship_scheme_id"]): r["status"] for r in cur.fetchall()}
+            cur.execute("SELECT current_date AS today")
+            today = cur.fetchone()["today"]
         packs = []
         for scheme in schemes:
             if not evaluate(facts, scheme["eligibility_criteria"])["is_eligible"]:
@@ -886,8 +1121,53 @@ def application_pack(student_id: str) -> dict:
                 "benefit": _rupees(scheme.get("benefit_amount")),
                 "deadline": scheme.get("application_closes") or "as published",
                 "documents": scheme.get("required_documents") or [],
+                "status": applied.get(scheme["scholarship_scheme_id"]),
+                "checks": _pack_checks(facts, scheme, today),
             })
-        return {"facts": facts, "prefilled": prefilled, "packs": packs}
+        return {"facts": facts, "prefilled": prefilled, "packs": packs,
+                "record_checks": _record_checks(facts)}
+
+
+def _record_checks(facts: dict) -> list[dict]:
+    """Format validation of the institutional data that gets pre-filled into a form."""
+    import re as _re
+    name = facts.get("full_name") or ""
+    inc = facts.get("annual_income")
+    return [
+        {"label": "Name as on record", "ok": bool(_re.fullmatch(r"[A-Za-z][A-Za-z .'-]{1,79}", name)),
+         "note": "letters, spaces, . ' - only (portals reject digits and symbols)"},
+        {"label": "Register number format", "ok": bool(_re.fullmatch(r"\d{2}CSE\d{3}", facts.get("roll_no") or "")),
+         "note": "YYCSE### as issued by the university"},
+        {"label": "Annual family income on file", "ok": inc is not None and float(inc) > 0,
+         "note": "needed for every means-tested scheme; certificate must match"},
+        {"label": "Social category on file", "ok": bool(facts.get("social_category")),
+         "note": "needed for category-based schemes; certificate must match"},
+        {"label": "CGPA published", "ok": facts.get("cgpa") is not None, "note": "latest term result"},
+        {"label": "Attendance on record", "ok": facts.get("attendance_pct") is not None,
+         "note": "renewals check it against 75%"},
+    ]
+
+
+def _pack_checks(facts: dict, scheme: dict, today) -> list[dict]:
+    from datetime import date as _date
+    checks = []
+    opens, closes = scheme.get("application_opens"), scheme.get("application_closes")
+    if closes:
+        c = _date.fromisoformat(closes)
+        o = _date.fromisoformat(opens) if opens else None
+        if o and today < o:
+            checks.append({"label": "Application window", "ok": True, "note": f"opens {opens}"})
+        elif today <= c:
+            left = (c - today).days
+            checks.append({"label": "Application window", "ok": True,
+                           "note": f"open — {left} day(s) left (closes {closes})"})
+        else:
+            checks.append({"label": "Application window", "ok": False,
+                           "note": f"closed on {closes} — prepare now for the next cycle"})
+    docs = scheme.get("required_documents") or []
+    checks.append({"label": "Document list", "ok": bool(docs),
+                   "note": f"{len(docs)} document(s) to collect" if docs else "not published by the scheme"})
+    return checks
 
 
 def integration_report() -> dict:
@@ -973,6 +1253,66 @@ def integration_report() -> dict:
     }
 
 
+def _notified_pairs(conn, student_ids=None) -> set:
+    """(student_id, scheme name) pairs that already have a pending or sent notice."""
+    with conn.cursor() as cur:
+        cur.execute(
+            """SELECT o.subject_id, o.payload->>'scheme' AS scheme
+               FROM agentops.agent_output o
+               JOIN agentops.agent_run r ON r.agent_run_id = o.agent_run_id
+               WHERE r.agent_id = %s AND o.output_type = 'ALERT' AND o.subject_type = 'STUDENT'
+                 AND o.approval_status IN ('PENDING','APPROVED')
+                 AND (%s::uuid[] IS NULL OR o.subject_id = ANY(%s::uuid[]))""",
+            (AGENT_ID, student_ids, student_ids))
+        return {(str(x["subject_id"]), x["scheme"]) for x in cur.fetchall()}
+
+
+def _notice(facts, scheme):
+    docs = scheme.get("required_documents") or []
+    deadline = scheme.get("application_closes") or "the published deadline"
+    msg = (f"To {facts['full_name']} ({facts['roll_no']}): you are eligible for "
+           f"{scheme['name']} — benefit {_rupees(scheme.get('benefit_amount'))}. "
+           f"Apply by {deadline}. Documents required: "
+           + (", ".join(docs) if docs else "as per scheme") + ".")
+    payload = {"roll_no": facts["roll_no"], "student": facts["full_name"],
+               "scheme": scheme["name"], "benefit": scheme.get("benefit_amount"),
+               "deadline": scheme.get("application_closes"), "documents": docs}
+    return payload, msg
+
+
+def notify_all() -> dict:
+    """Step 3 at scale: draft a notice for every eligible student who has not
+    applied and has not already been notified. All drafts wait for approval."""
+    with get_conn() as conn:
+        students = get_students(conn)
+        schemes = get_schemes(conn)
+        apps = _application_index(conn)
+        done = _notified_pairs(conn)
+        run_id = start_run(conn, "USER", {"scope": "all_students"},
+                           "Notify every eligible student who has not applied")
+        record_input(conn, run_id, "people", "v_student_profile", len(students))
+        record_input(conn, run_id, "finance", "scholarship_scheme", len(schemes))
+        rows = []
+        for f in students:
+            for sc in schemes:
+                if (f["student_id"], sc["scholarship_scheme_id"]) in apps:
+                    continue
+                if (f["student_id"], sc["name"]) in done:
+                    continue
+                if not evaluate(f, sc["eligibility_criteria"])["is_eligible"]:
+                    continue
+                payload, msg = _notice(f, sc)
+                rows.append((run_id, f["student_id"], Jsonb(payload), msg))
+        with conn.cursor() as cur:
+            cur.executemany(
+                """INSERT INTO agentops.agent_output
+                     (agent_run_id, output_type, subject_type, subject_id, payload,
+                      reasoning_summary, confidence, requires_approval, approval_status)
+                   VALUES (%s, 'ALERT', 'STUDENT', %s, %s, %s, 0.99, true, 'PENDING')""", rows)
+        finish_run(conn, run_id)
+    return {"drafted": len(rows), "already_notified": len(done), "run_id": run_id}
+
+
 def notify_student(student_id: str) -> dict:
     """Step 3 — notify a student of every scheme they are eligible for but have
     not applied to, with benefit, deadline and the document list. Each draft is
@@ -986,27 +1326,19 @@ def notify_student(student_id: str) -> dict:
             cur.execute("SELECT scholarship_scheme_id FROM finance.scholarship_application "
                         "WHERE student_id = %s", (student_id,))
             applied = {str(r["scholarship_scheme_id"]) for r in cur.fetchall()}
+        done = _notified_pairs(conn, [student_id])
 
         run_id = start_run(conn, "USER", {"student_id": student_id},
                            f"Notify {facts['roll_no']} of eligible schemes")
         drafted = []
         for scheme in schemes:
-            if scheme["scholarship_scheme_id"] in applied:
+            if scheme["scholarship_scheme_id"] in applied or (student_id, scheme["name"]) in done:
                 continue
             if not evaluate(facts, scheme["eligibility_criteria"])["is_eligible"]:
                 continue
-            docs = scheme.get("required_documents") or []
-            deadline = scheme.get("application_closes") or "the published deadline"
-            msg = (f"To {facts['full_name']} ({facts['roll_no']}): you are eligible for "
-                   f"{scheme['name']} — benefit {_rupees(scheme.get('benefit_amount'))}. "
-                   f"Apply by {deadline}. Documents required: "
-                   + (", ".join(docs) if docs else "as per scheme") + ".")
-            write_output(conn, run_id, "ALERT",
-                         {"roll_no": facts["roll_no"], "student": facts["full_name"],
-                          "scheme": scheme["name"], "benefit": scheme.get("benefit_amount"),
-                          "deadline": scheme.get("application_closes"), "documents": docs},
-                         msg, subject_type="STUDENT", subject_id=student_id,
-                         requires_approval=True)
+            payload, msg = _notice(facts, scheme)
+            write_output(conn, run_id, "ALERT", payload, msg,
+                         subject_type="STUDENT", subject_id=student_id, requires_approval=True)
             drafted.append(scheme["name"])
         finish_run(conn, run_id)
         return {"drafted": len(drafted), "schemes": drafted, "roll_no": facts["roll_no"]}
