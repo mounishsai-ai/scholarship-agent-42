@@ -13,7 +13,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Sora:wght@600;700;800&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet" />
 
   <link rel="stylesheet" href="{{ url_for('static', filename='vendor/lenis.css') }}" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=25" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/landing.css') }}?v=33" />
   <link rel="stylesheet" href="{{ url_for('static', filename='css/consent.css') }}?v=2" />
 </head>
 <body>
@@ -84,7 +84,14 @@
     </video>
   </div>
   <div class="hero-glow" aria-hidden="true"></div>
-  <div class="hero-grid">
+
+  <!-- AURA bot — top-right of the hero -->
+  <div class="mascot" aria-hidden="true">
+    <img class="mascot-3d" src="{{ url_for('static', filename='img/robot.svg') }}?v=1"
+         alt="AURA, the Scholarship Agent" width="180" height="180" />
+  </div>
+
+  <div class="hero-grid hero-grid--center">
 
     <div class="hero-copy">
       <h1 class="hero-title" data-reveal>
@@ -114,7 +121,7 @@
                 <span class="g-logo" aria-hidden="true">
                   <svg viewBox="0 0 48 48" width="18" height="18"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
                 </span>
-                Google
+                Sign in with Google
               </button>
             </form>
             <form method="post" action="{{ url_for('login') }}" class="inline-form">
@@ -124,43 +131,6 @@
             <button type="button" class="signin-more" data-open-signin>More options →</button>
           </div>
         {% endif %}
-      </div>
-    </div>
-
-    <!-- Signature: the coverage-gap meter + AURA -->
-    <div class="hero-visual" data-reveal>
-      <div class="mascot" aria-hidden="true">
-        <img class="mascot-3d" src="{{ url_for('static', filename='img/robot.svg') }}?v=1"
-             alt="AURA, the Scholarship Agent" width="180" height="180" />
-      </div>
-
-      <div class="meter-card" id="coverage-meter">
-        <div class="meter-head">
-          <span class="meter-kicker" id="meter-kicker">Live coverage across the CSE cohort</span>
-          <span class="meter-badge" id="meter-source">connecting…</span>
-        </div>
-        <div class="meter-stats">
-          <div class="mstat">
-            <div class="mstat-num" id="stat-eligible">—</div>
-            <div class="mstat-lbl">Eligible matches</div>
-          </div>
-          <div class="mstat">
-            <div class="mstat-num accent-blue" id="stat-covered">—</div>
-            <div class="mstat-lbl">Actually covered</div>
-          </div>
-          <div class="mstat">
-            <div class="mstat-num accent-gold" id="stat-gap">—</div>
-            <div class="mstat-lbl">The gap Agent&nbsp;42 closes</div>
-          </div>
-        </div>
-        <div class="meter-bar" role="img" aria-label="Coverage across the CSE cohort, loading">
-          <div class="meter-fill" id="meter-fill" style="width:0%"></div>
-          <div class="meter-gap-label" id="meter-gap-label">gap</div>
-        </div>
-        <div class="meter-legend">
-          <span><i class="dot dot-blue"></i>Covered</span>
-          <span><i class="dot dot-gold"></i>Eligible but unclaimed</span>
-        </div>
       </div>
     </div>
   </div>
