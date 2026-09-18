@@ -96,15 +96,7 @@
       var el = $('.a42-tabmeta[data-meta="' + k + '"]');
       if (el) el.textContent = META[k];
     });
-    var active = tabs[i];
-    if (!active) return;
-    var panel = $("#panel-" + active.dataset.tab);
-    if (panel && !$(".a42-claim", panel) && CLAIMS[active.dataset.tab]) {
-      var strip = document.createElement("div");
-      strip.className = "a42-claim";
-      strip.innerHTML = "<b>What this proves &nbsp;·&nbsp; </b>" + CLAIMS[active.dataset.tab];
-      panel.insertBefore(strip, panel.firstChild);
-    }
+    // The "What this proves" strip was removed — tabs open directly on their content.
   }
 
   function setMeta(tab, text) {
@@ -143,6 +135,12 @@
     if (!total) return "No " + noun + " match these filters";
     var a = (page - 1) * per + 1, b = Math.min(total, page * per);
     return "Showing <b>" + a + "–" + b + "</b> of <b>" + total.toLocaleString("en-IN") + "</b> " + noun;
+  }
+  // compact "25 of 1,000 students" — the count on this page, of the total
+  function rangeCompact(total, page, per, noun) {
+    if (!total) return "No " + noun + " match these filters";
+    var a = (page - 1) * per + 1, b = Math.min(total, page * per);
+    return "<b>" + (b - a + 1) + "</b> of <b>" + total.toLocaleString("en-IN") + "</b> " + noun;
   }
   function pageOf(list, page, per) { return list.slice((page - 1) * per, page * per); }
   function clampPage(page, total, per) {
@@ -239,13 +237,51 @@
     }).join("") + "</div>";
   }
 
+  // One full-width bar per scheme: everyone who qualifies, split by how far they got.
+  // Segments print their count inside when they are ≥3.5% of the bar; smaller non-zero
+  // segments spill out as dot-chips on the line under the bar, so every count shows.
+  var COV_SEG = [
+    { key: "eligible_claimed",   color: "#3f68ea", ink: "#fff",     chip: "got the money" },
+    { key: "eligible_applied",   color: "#a9c1fb", ink: "#16203a",  chip: "waiting" },
+    { key: "eligible_rejected",  color: "#f3c7c2", ink: "#7a201b",  chip: "rejected" },
+    { key: "eligible_unapplied", color: "#fbe4bb", ink: "#8a4b08",  chip: "never applied" }
+  ];
+  function schemeSegBar(s) {
+    var elig = s.eligible || 0;
+    var bar = COV_SEG.map(function (g) {
+      var n = s[g.key] || 0;
+      if (!n) return "";
+      var w = elig ? 100 * n / elig : 0;
+      var inside = w >= 3.5 ? '<b>' + nf(n) + "</b>" : "";
+      return '<span style="background:' + g.color + ";width:" + w.toFixed(3) + '%;color:' + g.ink +
+        '" title="' + esc(g.chip + " — " + nf(n)) + '">' + inside + "</span>";
+    }).join("");
+    var tiny = COV_SEG.map(function (g) {
+      var n = s[g.key] || 0;
+      if (!n) return "";
+      var w = elig ? 100 * n / elig : 0;
+      if (w >= 3.5) return "";
+      return '<span class="chip"><i style="background:' + g.color + '"></i><b>' + nf(n) + "</b> " + esc(g.chip) + "</span>";
+    }).join("");
+    return '<div class="a42-covrow">' +
+      '<div class="nm">' + esc(s.scheme_name) + "</div>" +
+      '<div class="bw"><div class="a42-covbar">' + bar + "</div>" +
+        '<div class="ft"><span class="lf"><b class="bl">' + pct(s.eligible_claimed, elig) +
+          "%</b> got the money · <b class=\"gd\">" + nf(s.eligible_unapplied) + "</b> never applied</span>" +
+        '<span class="chips">' + tiny + "</span></div></div>" +
+    "</div>";
+  }
+
   function installCoverage(getData, errorCard) {
     window.loaders.coverage = async function () {
       var el = $("#panel-coverage");
       try {
-        var d = await getData("/api/coverage");
-        var schemes = [];
-        try { schemes = (await getData("/api/schemes")).schemes || []; } catch (e) { /* prices optional */ }
+        var res = await Promise.all([
+          getData("/api/coverage"),
+          getData("/api/schemes").then(function (r) { return r.schemes || []; }).catch(function () { return []; }),
+          getData("/api/applications").then(function (r) { return r.applications || []; }).catch(function () { return []; })
+        ]);
+        var d = res[0], schemes = res[1], apps = res[2];
 
         var stuck = 0, moved = 0, priced = false;
         d.per_scheme.forEach(function (s) {
@@ -256,174 +292,116 @@
         });
         var total = moved + stuck;
         var movedPct = total ? Math.round(100 * moved / total) : 0;
-        var st = d.students || {};
-        var cohort = st.total || 0;
-        var qualify = cohort - (st.NOT_ELIGIBLE || 0);
-        var coveredStudents = (st.FULL || 0) + (st.PARTIAL || 0);
 
         setMeta("coverage", priced ? lakh(stuck) + " gap" : d.coverage_gap + " gap");
 
-        // --- 1. the money statement
-        var ledger =
-          '<div class="a42-ledger">' +
-            '<div class="a42-ledger-grid">' +
-              "<div>" +
-                '<div class="a42-eyebrow">Eligible but unclaimed · 2025–26</div>' +
-                '<div class="a42-bignum">' + (priced ? lakh(stuck) : nf(d.coverage_gap) + " matches") + "</div>" +
-                "<p><b>" + nf(d.coverage_gap) + "</b> of <b>" + nf(d.total_eligible) + "</b> eligible " +
-                  "student-and-scheme matches across <b>" + nf(cohort) + " students</b> have no money " +
-                  "against them yet. Each is priced at its own scheme’s benefit — read from the " +
-                  "database, never estimated.</p>" +
+        var year = d.academic_year ? d.academic_year : "";
+
+        // --- 1. gap summary — two lines + a ribbon
+        var gapCard =
+          '<div class="a42-covgap">' +
+            '<div class="hd">' +
+              "<div class=\"tx\">" +
+                '<div class="l1"><b class="amt">' + (priced ? lakh(stuck) : nf(d.coverage_gap) + " matches") +
+                  "</b> of scholarship money is unclaimed.</div>" +
+                '<div class="l2"><b>' + nf(d.coverage_gap) + "</b> of <b>" + nf(d.total_eligible) +
+                  "</b> eligible student–scheme matches have no application yet.</div>" +
               "</div>" +
-              "<div>" +
-                '<div class="a42-stat"><div class="k">Identified by the agent</div>' +
-                  '<div class="v">' + (priced ? lakh(total) : nf(d.total_eligible)) + "</div>" +
-                  '<div class="n">' + nf(d.total_eligible) + " matches across every student and scheme.</div></div>" +
-                '<div class="a42-stat"><div class="k">Actually reaching students</div>' +
-                  '<div class="v blue">' + (priced ? lakh(moved) : nf(d.total_covered)) + "</div>" +
-                  '<div class="n">' + nf(d.total_covered) + " awards sanctioned or disbursed this cycle.</div></div>" +
-              "</div>" +
+              (year ? '<div class="yr">' + esc(year) + "</div>" : "") +
             "</div>" +
-            (priced ?
-            '<div class="a42-split"><div class="a42-splitbar">' +
-              '<div class="moved" style="width:' + movedPct + '%"></div><div class="stuck"></div></div>' +
-              '<div class="a42-splitfoot"><span><b>' + movedPct + "%</b> of the money identified has moved</span>" +
-              '<span class="a42-goldtxt">the rest is still sitting with the schemes</span></div></div>' : "") +
+            '<div class="a42-covribbon"><div class="fill" style="width:' + movedPct + '%"></div>' +
+              '<div class="rest"></div></div>' +
+            '<div class="rf"><span><b class="bl">' + movedPct + "%</b> moved · " + nf(d.total_covered) +
+              " reaching students</span><span class=\"gd\">the rest is unclaimed</span></div>" +
           "</div>";
 
-        // --- 2. partial coverage, one square per student
-        var states = d.student_states || [];
-        var COLS = 40;
-        var squares = states.map(function (s, i) {
-          var r = Math.floor(i / COLS), c = i % COLS;
-          return '<i class="b-' + s[1] + '" style="animation-delay:' + ((r + c) * 9) + 'ms" title="' +
-            esc(s[0] + " · " + (BUCKET_LABEL[s[1]] || s[1])) + '"></i>';
-        }).join("");
-        var keyRows = BUCKETS.map(function (b) {
-          var n = st[b.key] || 0;
-          return '<button class="a42-bkey" data-a42-bucket="' + b.key + '">' +
-            '<i class="b-' + b.key + '"></i>' +
-            '<span class="tx"><span class="lb">' + esc(b.label) + "</span>" +
-              '<span class="ds">' + esc(b.desc) + "</span></span>" +
-            '<span class="nm"><b>' + nf(n) + "</b><span>" + pct(n, cohort) + "%</span></span></button>";
-        }).join("");
-        var qualifyBar = stackBar([
-          { cls: "b-FULL", n: st.FULL || 0, label: "Fully covered" },
-          { cls: "b-PARTIAL", n: st.PARTIAL || 0, label: "Partly covered" },
-          { cls: "b-IN_PROGRESS", n: st.IN_PROGRESS || 0, label: "Applied, waiting" },
-          { cls: "b-UNCLAIMED", n: st.UNCLAIMED || 0, label: "Eligible, nothing claimed" }
-        ], qualify, "big");
-        var batches = (d.by_batch || []).map(function (b) {
-          var q = b.students - (b.NOT_ELIGIBLE || 0);
-          var got = (b.FULL || 0) + (b.PARTIAL || 0);
-          return '<div class="a42-batch">' +
-            '<div class="nm"><b>' + esc(b.batch) + "</b><span>Year " + esc(b.year_of_study) + " · " +
-              nf(b.students) + " students</span></div>" +
-            stackBar([
-              { cls: "b-FULL", n: b.FULL || 0, label: "Fully covered" },
-              { cls: "b-PARTIAL", n: b.PARTIAL || 0, label: "Partly covered" },
-              { cls: "b-IN_PROGRESS", n: b.IN_PROGRESS || 0, label: "Applied, waiting" },
-              { cls: "b-UNCLAIMED", n: b.UNCLAIMED || 0, label: "Eligible, nothing claimed" },
-              { cls: "b-NOT_ELIGIBLE", n: b.NOT_ELIGIBLE || 0, label: "No scheme matches" }
-            ], b.students) +
-            '<div class="v"><b>' + pct(got, q) + "%</b><span>" + nf(got) + " of " + nf(q) + " eligible covered</span></div>" +
-          "</div>";
-        }).join("");
-
-        var partial =
-          '<div class="a42-ledger" style="animation-delay:.08s">' +
-            '<div class="a42-eyebrow">Coverage, student by student</div>' +
-            '<h2 class="a42-h2">' + pct(coveredStudents, qualify) + "% of eligible students have a " +
-              "scholarship. " + pct(st.UNCLAIMED || 0, qualify) + "% have nothing moving.</h2>" +
-            '<div class="sub" style="margin-top:10px;max-width:74ch">Of <b>' + nf(qualify) +
-              "</b> students who qualify for at least one scheme, <b>" + nf(coveredStudents) +
-              "</b> are covered — and <b>" + nf(st.PARTIAL || 0) + "</b> of those still qualify for " +
-              "another scheme nobody applied to. That is what “partial” means here.</div>" +
-            '<div class="a42-qualify">' + qualifyBar +
-              '<div class="a42-qualfoot"><span>' + nf(qualify) + " students qualify</span>" +
-              "<span>" + nf(st.NOT_ELIGIBLE || 0) + " match no current scheme</span></div></div>" +
-            '<div class="a42-waffwrap">' +
-              '<div><div class="a42-waffle" id="a42-waffle" role="img" aria-label="' +
-                esc(nf(cohort) + " students, one square each, coloured by coverage") + '">' + squares + "</div>" +
-                '<div class="a42-wafffoot">One square = one student · ' + nf(cohort) +
-                  " squares, register-number order (22CSE → 25CSE)</div></div>" +
-              '<div class="a42-bkeys"><div class="a42-bkeyhint">Tap a group to light it up in the grid</div>' +
-                keyRows + "</div>" +
-            "</div>" +
-            '<h3 class="a42-h3" style="margin:30px 0 6px">By batch</h3>' +
-            '<div class="a42-batches">' + batches + "</div>" +
-          "</div>";
-
-        // --- 3. per scheme: the eligible pairs, split by where each one stands
-        var rows = d.per_scheme.map(function (s) {
-          var amt = s.benefit_amount != null ? Number(s.benefit_amount) : schemeAmount(schemes, s.scheme_name);
-          var code = s.scheme_code || schemeCode(schemes, s.scheme_name);
-          return '<div class="a42-gaprow">' +
-            '<div><div class="nm">' + esc(s.scheme_name) + "</div>" +
-              '<div class="cd">' + esc(code || "scheme") + (amt ? " · " + inr(amt) + " each" : "") +
-              " · " + nf(s.eligible) + " eligible</div></div>" +
-            '<div class="a42-gapbar">' + stackBar([
-              { cls: "s-CLAIMED", n: s.eligible_claimed || 0, label: "Claimed — money sanctioned or paid" },
-              { cls: "s-APPLIED", n: s.eligible_applied || 0, label: "Applied — in process" },
-              { cls: "s-REJECTED", n: s.eligible_rejected || 0, label: "Applied — rejected" },
-              { cls: "s-ELIGIBLE", n: s.eligible_unapplied || 0, label: "Eligible — nobody applied" }
-            ], s.eligible) +
-            '<div class="a42-gapnums"><span><b>' + pct(s.eligible_claimed, s.eligible) + "%</b> claimed</span>" +
-              "<span>" + nf(s.eligible_unapplied) + " never applied</span></div></div>" +
-            "<div>" + (amt
-              ? '<div class="a42-gapmoney">' + lakh(s.gap * amt) + "</div>"
-              : '<div class="a42-gapmoney">' + nf(s.gap) + " unclaimed</div>") +
-              '<div class="a42-gapsub">gap: ' + nf(s.gap) + " of " + nf(s.eligible) + "</div></div>" +
-          "</div>";
-        }).join("");
-
-        var rej = d.rejections.length
-          ? d.rejections.map(function (r) {
-              return '<div class="a42-note bad"><i>!</i><span><b>' + r.n + "</b> — " +
-                esc(r.rejection_reason) + "</span></div>";
-            }).join("") +
-            '<div class="a42-note ok"><i>→</i><span>These are procedural, not merit. Next cycle the ' +
-              "agent checks documents and ceilings before the student applies.</span></div>"
-          : '<div class="a42-note ok"><i>✓</i><span>No rejections recorded this cycle.</span></div>';
-
-        var ds = d.disbursement || {};
-        var rejBy = (d.rejections_by_scheme || []).map(function (r) {
-          return "<b>" + esc(r.scheme_code) + "</b> " + nf(r.n);
-        }).join(" · ");
-        var disb =
-          '<div class="a42-ledger" style="animation-delay:.11s">' +
-            '<div class="a42-eyebrow">Disbursement · where the sanctioned money is</div>' +
-            '<div class="a42-dgrid">' +
-              '<div><div class="k">Sanctioned</div><div class="v">' + lakh(ds.sanctioned) + "</div>" +
-                '<div class="n">' + nf(ds.awards) + " awards</div></div>" +
-              '<div><div class="k">Paid to students</div><div class="v blue">' + lakh(ds.disbursed) + "</div>" +
-                '<div class="n">' + pct(ds.disbursed, ds.sanctioned) + "% of sanctioned</div></div>" +
-              '<div><div class="k">Sanctioned, not yet paid</div><div class="v gold">' + lakh(ds.awaiting_amount) + "</div>" +
-                '<div class="n">' + nf(ds.awaiting) + " awards waiting on the bank / treasury</div></div>" +
-              '<div><div class="k">Applied → paid</div><div class="v">' + (ds.avg_days != null ? nf(ds.avg_days) + " days" : "—") + "</div>" +
-                '<div class="n">average, for awards already paid</div></div>' +
-              '<div><div class="k">Rejection rate</div><div class="v red">' + pct(ds.rejected, ds.applications) + "%</div>" +
-                '<div class="n">' + nf(ds.rejected) + " of " + nf(ds.applications) + (rejBy ? " · " + rejBy : "") + "</div></div>" +
-            "</div>" +
-          "</div>";
-
-        el.innerHTML = ledger + partial + disb +
+        // --- 2. scheme by scheme
+        var covRows = d.per_scheme.map(schemeSegBar).join("");
+        var schemeCard =
           '<div class="a42-ledger" style="animation-delay:.14s">' +
-            '<h2 class="a42-h3" style="margin-bottom:6px">Where the gap lives, scheme by scheme</h2>' +
-            '<div class="sub" style="margin-bottom:10px;max-width:70ch">Each bar is every student eligible ' +
-              "for that scheme, split by how far they got. Blue is money that reached them; gold is " +
-              "the gap nobody has started on.</div>" +
-            rows +
-            '<div class="a42-legend">' +
-              '<span><i class="s-CLAIMED"></i>Claimed — sanctioned or paid</span>' +
-              '<span><i class="s-APPLIED"></i>Applied, in process</span>' +
-              '<span><i class="s-REJECTED"></i>Applied, rejected</span>' +
-              '<span><i class="s-ELIGIBLE"></i>Eligible, nobody applied</span>' +
+            '<h2 class="a42-h3" style="margin-bottom:4px">Scheme by scheme</h2>' +
+            '<div class="sub" style="max-width:72ch">One bar per scheme: everyone who qualifies, split by how far they got.</div>' +
+            '<div class="a42-covaxis"><span style="left:0">0%</span><span style="left:25%">25%</span>' +
+              '<span style="left:50%">50%</span><span style="left:75%">75%</span><span style="right:0">100%</span></div>' +
+            covRows +
+            '<div class="a42-legend covlegend">' +
+              '<span><i style="background:#3f68ea"></i>Got the money</span>' +
+              '<span><i style="background:#a9c1fb"></i>Applied, waiting</span>' +
+              '<span><i style="background:#f3c7c2"></i>Rejected</span>' +
+              '<span><i style="background:#fbe4bb"></i>Never applied</span>' +
             "</div>" +
-          "</div>" +
-          '<div class="a42-ledger" style="animation-delay:.2s">' +
-            '<h2 class="a42-h3">Why applications were rejected</h2>' + rej +
           "</div>";
+
+        // --- 3. disbursement donut + rejections
+        var ds = d.disbursement || {};
+        var C = 326.7; // circumference 2π·52
+        var sanct = Number(ds.sanctioned) || 0;
+        var paidFrac = sanct ? (Number(ds.disbursed) || 0) / sanct : 0;
+        var blueDash = (paidFrac * C).toFixed(1);
+        var goldDash = ((1 - paidFrac) * C).toFixed(1);
+        var goldOff = "-" + blueDash;
+        var paidPct = pct(ds.disbursed, ds.sanctioned);
+        // oldest application still waiting (submitted / verified / sanctioned, not paid or rejected)
+        var waiting = apps.filter(function (a) {
+          return ["SUBMITTED", "INSTITUTION_VERIFIED", "SANCTIONED"].indexOf(a.status) >= 0;
+        });
+        var longest = waiting.reduce(function (m, a) { return Math.max(m, Number(a.days_waiting) || 0); }, 0);
+        var disbStats = [
+          { k: "Applied → paid", v: (ds.avg_days != null ? nf(Math.round(ds.avg_days)) + " days" : "—"),
+            n: "average time to reach the student", color: "#12224e" },
+          { k: "Rejection rate", v: pct(ds.rejected, ds.applications) + "%", color: "#d8443c",
+            n: nf(ds.rejected) + " of " + nf(ds.applications) + " applications" },
+          { k: "Longest wait", v: nf(longest) + " days", color: "#12224e",
+            n: "oldest application still waiting" }
+        ];
+        var disbCard =
+          '<div class="a42-ledger a42-disb" style="animation-delay:.18s">' +
+            '<div class="a42-eyebrow">Money already approved</div>' +
+            '<div class="a42-donutgrid">' +
+              '<div class="a42-donut"><svg viewBox="0 0 120 120">' +
+                '<circle cx="60" cy="60" r="52" fill="none" stroke="#f1f4fa" stroke-width="15"></circle>' +
+                '<circle cx="60" cy="60" r="52" fill="none" stroke="#f8d9a6" stroke-width="15" ' +
+                  'stroke-dasharray="' + goldDash + " " + C + '" stroke-dashoffset="' + goldOff + '" stroke-linecap="butt"></circle>' +
+                '<circle cx="60" cy="60" r="52" fill="none" stroke="#3f68ea" stroke-width="15" ' +
+                  'stroke-dasharray="' + blueDash + " " + C + '" stroke-linecap="butt" class="arc"></circle>' +
+                "</svg>" +
+                '<div class="ctr"><div class="v">' + lakh(ds.sanctioned) + "</div>" +
+                  '<div class="k">Sanctioned</div><div class="n">' + nf(ds.awards) + " awards</div></div>" +
+              "</div>" +
+              '<div class="a42-donutkey">' +
+                '<div class="row"><span class="sw" style="background:#3f68ea"></span><div>' +
+                  '<div class="amt bl">' + lakh(ds.disbursed) + ' <em>' + paidPct + "%</em></div>" +
+                  '<div class="cap">Paid to students</div></div></div>' +
+                '<div class="row"><span class="sw" style="background:#f8d9a6"></span><div>' +
+                  '<div class="amt gd">' + lakh(ds.awaiting_amount) + " <em>" + (100 - paidPct) + "%</em></div>" +
+                  '<div class="cap">Approved, not yet paid · ' + nf(ds.awaiting) + " awards</div></div></div>" +
+              "</div>" +
+            "</div>" +
+            '<div class="a42-disbstats">' + disbStats.map(function (t) {
+              return '<div class="tile"><div class="k">' + esc(t.k) + "</div>" +
+                '<div class="v" style="color:' + t.color + '">' + t.v + "</div>" +
+                '<div class="n">' + esc(t.n) + "</div></div>";
+            }).join("") + "</div>" +
+          "</div>";
+
+        var rejMax = (d.rejections || []).reduce(function (m, r) { return Math.max(m, r.n); }, 1);
+        var rejRows = (d.rejections || []).map(function (r) {
+          return '<div class="a42-rejrow"><div class="tx"><div class="rn">' + esc(r.rejection_reason) + "</div>" +
+            '<div class="bar"><span style="width:' + Math.round(100 * r.n / rejMax) + '%"></span></div></div>' +
+            '<div class="n">' + nf(r.n) + "</div></div>";
+        }).join("");
+        var rejCard =
+          '<div class="a42-ledger a42-rejcard" style="animation-delay:.22s">' +
+            '<h2 class="a42-h3" style="margin-bottom:4px">Why applications were rejected</h2>' +
+            '<div class="sub" style="margin-bottom:14px">' + nf(ds.rejected || 0) + " of " + nf(ds.applications || 0) +
+              " — paperwork, not marks.</div>" +
+            (rejRows || '<div class="a42-note ok"><i>✓</i><span>No rejections recorded this cycle.</span></div>') +
+            '<div class="a42-note ok" style="margin-top:16px"><i>→</i><span>Next cycle the agent checks ' +
+              "documents before the student applies.</span></div>" +
+          "</div>";
+
+        el.innerHTML = gapCard + schemeCard +
+          '<div class="a42-covsplit">' + disbCard + rejCard + "</div>";
         syncRail();
       } catch (e) { errorCard(el, e); }
     };
@@ -480,6 +458,11 @@
   ];
   var STAGE_INDEX = {};
   STAGES.forEach(function (s, i) { STAGE_INDEX[s.key] = i; });
+  // Stage colours (light → dark) for the dot track and the bottom funnel ribbon.
+  var STAGE_COLOR = { SUBMITTED: "#c9d8fc", INSTITUTION_VERIFIED: "#a9c1fb",
+    SANCTIONED: "#6084fc", DISBURSED: "#3f68ea" };
+  var STAGE_INK = { SUBMITTED: "#16203a", INSTITUTION_VERIFIED: "#16203a",
+    SANCTIONED: "#fff", DISBURSED: "#fff" };
   var STATUS_TEXT = { SUBMITTED: "Submitted", INSTITUTION_VERIFIED: "Verified by college",
     SANCTIONED: "Sanctioned", DISBURSED: "Paid", REJECTED: "Rejected", DRAFT: "Draft",
     LAPSED: "Lapsed" };
@@ -542,35 +525,63 @@
       });
     }
 
+    // Four dots, one per stage, filled up to where the application has reached.
+    // The whole track turns green once the money is paid (at === 3); in-progress
+    // stages are a uniform blue; a rejected application shows a single red dot.
+    function stageDots(status) {
+      var at = STAGE_INDEX[status];
+      if (at == null) at = -1;
+      var rej = status === "REJECTED";
+      var fill = at === 3 ? "#12a150" : "#3f68ea";
+      return '<div class="a42-apdots">' + STAGES.map(function (s, i) {
+        var bg, bd;
+        if (rej) { bg = i === 0 ? "#d8443c" : "#fff"; bd = i === 0 ? "#d8443c" : "#d3def5"; }
+        else if (i <= at) { bg = fill; bd = fill; }
+        else { bg = "#fff"; bd = "#d3def5"; }
+        return (i ? '<b></b>' : "") + '<i style="background:' + bg + ";border-color:" + bd + '"></i>';
+      }).join("") + "</div>";
+    }
+
     function renderList() {
       var host = $("#a42-aplist");
       if (!host) return;
       var list = filtered();
       AP.page = clampPage(AP.page, list.length, PAGE);
       var rows = pageOf(list, AP.page, PAGE).map(function (a) {
-        var amt = a.status === "REJECTED" ? '<span class="bad">—</span>'
-          : a.disbursed_amount ? '<span class="paid">' + inr(a.disbursed_amount) + "</span><em>paid " + fmtDate(a.disbursed_on) + "</em>"
-          : a.sanctioned_amount ? '<span class="sanc">' + inr(a.sanctioned_amount) + "</span><em>sanctioned</em>"
-          : '<span class="pend">pending</span>';
-        return '<div class="a42-aprow' + (a.status === "REJECTED" ? " rej" : "") + '">' +
+        var rej = a.status === "REJECTED";
+        var amount, amtColor, note;
+        if (rej) { amount = "—"; amtColor = "#c0392f"; note = "not approved"; }
+        else if (a.disbursed_amount) { amount = inr(a.disbursed_amount); amtColor = "#12a150"; note = "paid " + fmtDate(a.disbursed_on); }
+        else if (a.sanctioned_amount) { amount = inr(a.sanctioned_amount); amtColor = "#2f52c4"; note = "sanctioned"; }
+        else { amount = "pending"; amtColor = "#8290ab"; note = "awaiting a decision"; }
+        var statusLabel = rej ? "Rejected" : (STATUS_TEXT[a.status] || a.status);
+        var statusColor = rej ? "#c0392f" : (a.status === "DISBURSED" ? "#12a150" : "#2f52c4");
+        // In-progress applications show how long they've been waiting in the current
+        // stage; paid ones need no note, rejected ones show why.
+        var inProgress = !rej && a.status !== "DISBURSED";
+        var waitTxt = inProgress ? (nf(a.days_waiting) + " days in this stage")
+          : (rej && a.rejection_reason ? a.rejection_reason : "");
+        var waitColor = a.stalled ? "#b0700a" : "#5b6478";
+        return '<div class="a42-aprow' + (rej ? " rej" : "") + '">' +
           '<button class="who" data-a42-story="' + esc(a.student_id || "") + '" title="Open ' + esc(a.full_name) + '’s application pack">' +
             '<span class="av">' + esc(initialsOf(a.full_name)) + "</span>" +
             '<span class="tx"><span class="nm">' + esc(a.full_name) + "</span>" +
-            '<span class="rl">' + esc(a.roll_no) + (a.year_of_study ? " · Year " + esc(a.year_of_study) : "") + "</span></span></button>" +
+            '<span class="rl">' + esc(a.roll_no) + (a.year_of_study ? " · Y" + esc(a.year_of_study) : "") + "</span></span></button>" +
           '<div class="sc"><b>' + esc(shortScheme(a.scheme_name)) + "</b><span>" +
             esc(a.external_application_no || a.scheme_code) + " · applied " + fmtDate(a.applied_on) + "</span></div>" +
-          '<div class="tr">' + miniTrack(a.status) +
-            (a.stalled ? '<div class="a42-stall">⏱ stuck ' + nf(a.days_waiting) + " days" +
-              (a.follow_up_drafted ? " · follow-up drafted" : " · needs a follow-up") + "</div>" : "") +
-            (a.rejection_reason ? '<div class="why">' + esc(a.rejection_reason) + "</div>" : "") + "</div>" +
-          '<div class="am">' + amt + "</div>" +
+          '<div class="tr">' + stageDots(a.status) +
+            '<div class="sl" style="color:' + statusColor + '">' + esc(statusLabel) + "</div>" +
+            (waitTxt ? '<div class="wt" style="color:' + waitColor + '">' + esc(waitTxt) + "</div>" : "") + "</div>" +
+          '<div class="am"><div class="v" style="color:' + amtColor + '">' + amount + "</div>" +
+            '<div class="nt">' + esc(note) + "</div></div>" +
         "</div>";
       }).join("");
       host.innerHTML =
-        '<div class="a42-listmeta">' + rangeText(list.length, AP.page, PAGE, "applications") + "</div>" +
         (rows ? '<div class="a42-aprows">' + rows + "</div>"
               : '<div class="a42-note ok"><i>·</i><span>Nothing matches — clear the search or pick another stage.</span></div>') +
         pager("apps", list.length, AP.page, PAGE);
+      var meta = $("#a42-apmeta");
+      if (meta) meta.innerHTML = rangeCompact(list.length, AP.page, PAGE, "applications");
       $$("[data-a42-stage]").forEach(function (b) {
         b.classList.toggle("on", (b.dataset.a42Stage || "") === AP.stage);
       });
@@ -652,60 +663,37 @@
         var paid = sum.DISBURSED || 0, sanctioned = sum.SANCTIONED || 0;
         var stalled = apps.filter(function (a) { return a.stalled; });
         var undrafted = stalled.filter(function (a) { return !a.follow_up_drafted; }).length;
-
-        var nodes = STAGES.map(function (s, i) {
-          var n = count[s.key] || 0;
-          var money = s.key === "DISBURSED" ? lakh(paid) + " paid"
-            : s.key === "SANCTIONED" ? lakh(sanctioned) + " approved" : pct(n, apps.length) + "% of all";
-          return (i ? '<span class="a42-arrow" aria-hidden="true"></span>' : "") +
-            '<button class="a42-node k' + i + '" data-a42-stage="' + s.key + '" style="animation-delay:' + (i * 0.08) + 's">' +
-              '<span class="ix">' + (i + 1) + "</span>" +
-              '<span class="n">' + nf(n) + "</span>" +
-              '<span class="l">' + esc(s.label) + "</span>" +
-              '<span class="h">' + esc(s.hint) + "</span>" +
-              '<span class="m">' + money + "</span></button>";
-        }).join("");
+        var maxStall = stalled.reduce(function (m, a) { return Math.max(m, Number(a.days_waiting) || 0); }, 0);
+        var pipeline = STAGES.reduce(function (t, s) { return t + (count[s.key] || 0); }, 0);
+        var sancPaidMoney = (cov && cov.disbursement && cov.disbursement.sanctioned != null)
+          ? cov.disbursement.sanctioned : (paid + sanctioned);
+        var waitingN = (count.SUBMITTED || 0) + (count.INSTITUTION_VERIFIED || 0);
 
         var schemeOpts = '<option value="">All schemes</option>' + SCHEMES.map(function (s) {
           return '<option value="' + esc(s.code) + '"' + (AP.scheme === s.code ? " selected" : "") + ">" +
             esc(shortScheme(s.name)) + "</option>";
         }).join("");
 
+        // --- funnel ribbon (display-only — the chips do the filtering) ---
+        var funnel = STAGES.map(function (s) {
+          var n = count[s.key] || 0;
+          if (!n) return "";
+          return '<div title="' + esc(s.label + " — " + n) + '" style="width:' + (pipeline ? 100 * n / pipeline : 0).toFixed(3) +
+            "%;background:" + STAGE_COLOR[s.key] + ";color:" + STAGE_INK[s.key] + '"><b>' + nf(n) + "</b></div>";
+        }).join("");
+        var dotLegend = STAGES.map(function (s) {
+          return '<span><i style="background:' + STAGE_COLOR[s.key] + '"></i>' + esc(s.label) + "</span>";
+        }).join("");
+
         el.innerHTML =
-          '<div class="a42-ledger">' +
-            '<div class="a42-track-head">' +
-              "<div>" +
-                '<div class="a42-eyebrow">Every application, stage by stage</div>' +
-                '<h2 class="a42-h2">' + nf(apps.length) + " applications. " + nf(count.DISBURSED || 0) + " paid, " +
-                  nf((count.SUBMITTED || 0) + (count.INSTITUTION_VERIFIED || 0)) + " still waiting.</h2>" +
-                "<p>Read it left to right: each application moves from <b>submitted</b> to <b>paid</b>. " +
-                  "Tap a stage to list the students sitting in it.</p>" +
-              "</div>" +
-              '<div class="a42-track-money"><div class="v blue">' + lakh(paid + sanctioned) + "</div>" +
-                '<div class="k">sanctioned or paid</div></div>' +
-            "</div>" +
-            '<div class="a42-flow">' + nodes + "</div>" +
-            '<div class="a42-offramps">' +
-              '<button class="a42-off rej" data-a42-stage="REJECTED"><b>' + nf(count.REJECTED || 0) +
-                "</b> rejected <span>— mostly paperwork, see Coverage</span></button>" +
-              (stalled.length ? '<button class="a42-off stall" data-a42-stage="STALLED"><b>' + nf(stalled.length) +
-                "</b> stalled <span>— stuck past their stage’s time limit</span></button>" : "") +
-              (stalled.length && role.canAct
-                ? (undrafted
-                    ? '<button class="a42-btn small" id="a42-followups">Draft follow-ups for ' + nf(undrafted) + "</button>"
-                    : '<span class="a42-chip" style="background:#dcfce7;color:#166534">every stalled case has a follow-up drafted</span>')
-                : "") +
-              (cov ? '<div class="a42-off never"><b>' + nf(never) + "</b> eligible matches never applied" +
-                (neverMoney ? " <span>— " + lakh(neverMoney) + " nobody has asked for</span>" : "") + "</div>" : "") +
-            "</div>" +
-          "</div>" +
-          '<div class="a42-ledger" style="animation-delay:.1s" data-a42-list>' +
+          // opens on the stage chips + application list
+          '<div class="a42-ledger" data-a42-list>' +
             '<div class="a42-toolbar">' +
               '<label class="a42-search"><span aria-hidden="true">⌕</span>' +
-                '<input id="a42-apq" type="search" placeholder="Search a name or register number" value="' + esc(AP.q) + '"></label>' +
+                '<input id="a42-apq" type="search" placeholder="Search name or register number" value="' + esc(AP.q) + '"></label>' +
               '<select id="a42-apscheme" aria-label="Scheme">' + schemeOpts + "</select>" +
               '<div class="a42-chips">' +
-                '<button class="a42-fchip" data-a42-stage="">All</button>' +
+                '<button class="a42-fchip" data-a42-stage="">All <em>' + nf(apps.length) + "</em></button>" +
                 STAGES.map(function (s) {
                   return '<button class="a42-fchip" data-a42-stage="' + s.key + '">' + esc(s.label) +
                     " <em>" + nf(count[s.key] || 0) + "</em></button>";
@@ -713,14 +701,50 @@
                 '<button class="a42-fchip" data-a42-stage="REJECTED">Rejected <em>' + nf(count.REJECTED || 0) + "</em></button>" +
                 '<button class="a42-fchip" data-a42-stage="STALLED">Stalled <em>' + nf(stalled.length) + "</em></button>" +
               "</div>" +
+              '<div class="a42-listmeta apmeta" id="a42-apmeta"></div>' +
             "</div>" +
+            '<div class="a42-apheadrow">' +
+              '<div>Student</div><div>Scheme</div><div>Stage</div><div class="r">Money</div></div>' +
             '<div id="a42-aplist"></div>' +
+          "</div>" +
+          // compressed summary card at the bottom
+          '<div class="a42-ledger" style="animation-delay:.1s">' +
+            '<div class="a42-apsumhd">' +
+              '<div class="eb">' + nf(apps.length) + " applications · " + lakh(sancPaidMoney) + " sanctioned or paid</div>" +
+              '<div class="rt">' + nf(count.DISBURSED || 0) + " paid · " + nf(waitingN) + " waiting · " +
+                nf(count.REJECTED || 0) + " rejected</div>" +
+            "</div>" +
+            '<div class="a42-funnel">' + funnel + "</div>" +
+            '<div class="a42-funlegend">' + dotLegend + "</div>" +
+            '<div class="a42-oframps">' +
+              (stalled.length
+                ? '<div class="oframp"><div class="tx"><div class="big" style="color:#8a4b08">' + nf(stalled.length) +
+                    " stalled</div><div class=\"sb\">past their limit · longest " + nf(maxStall) + " days</div></div>" +
+                    (role.canAct
+                      ? (undrafted ? '<button class="a42-btn small" id="a42-followups">Draft follow-ups</button>'
+                          : '<span class="a42-chip" style="background:#dcfce7;color:#166534">all drafted</span>')
+                      : "") + "</div>"
+                : "") +
+              (cov
+                ? '<div class="oframp"><div class="tx"><div class="big" style="color:#e8930c">' + nf(never) +
+                    " never applied</div><div class=\"sb\">qualify but no application" + (neverMoney ? " · " + lakh(neverMoney) : "") +
+                    "</div></div>" +
+                    (role.canAct ? '<button class="a42-btn small" id="a42-tracknotify">Draft notices</button>' : "") + "</div>"
+                : "") +
+            "</div>" +
           "</div>";
 
         var fu = $("#a42-followups", el);
         if (fu) fu.addEventListener("click", function () {
           act(fu, "/api/follow-ups", {}, function (d) {
             return d.drafted + " follow-up(s) drafted — approve them in Agent Activity.";
+          });
+        });
+        var tn = $("#a42-tracknotify", el);
+        if (tn) tn.addEventListener("click", function () {
+          act(tn, "/api/notify-all", {}, function (d) {
+            return d.drafted ? d.drafted + " notice(s) drafted — approve them in Agent Activity."
+              : "Every eligible student without an application already has a notice.";
           });
         });
         onType($("#a42-apq", el), function () { AP.q = $("#a42-apq").value; AP.page = 1; renderList(); });
@@ -772,7 +796,7 @@
     NOT_ELIGIBLE: { cls: "no", icon: "–", label: "Not eligible", long: "A rule failed — never offered" },
     ELIGIBLE: { cls: "ok", icon: "✓", label: "Eligible", long: "Eligible — nobody has applied yet" },
     APPLIED: { cls: "ap", icon: "◔", label: "Applied", long: "Applied — being processed" },
-    CLAIMED: { cls: "cl", icon: "₹", label: "Claimed", long: "Claimed — money sanctioned or paid" },
+    CLAIMED: { cls: "cl", icon: "₹", label: "Got money", long: "Claimed — money sanctioned or paid" },
     REJECTED: { cls: "rj", icon: "!", label: "Rejected", long: "Applied — rejected" }
   };
   var RUNG_ORDER = ["NOT_ELIGIBLE", "ELIGIBLE", "APPLIED", "CLAIMED", "REJECTED"];
@@ -804,15 +828,12 @@
     var amt = Number(scheme.benefit_amount) || 0;
     var rung = rungOf(cell);
     var verdict = !cell.is_eligible
-      ? "At least one rule failed → not eligible. No notification is drafted, and the student " +
-        "is never shown a scheme they cannot win."
-      : "All rules passed → eligible" + (amt ? ", worth " + inr(amt) : "") + ". " +
-        ({ ELIGIBLE: "Nobody has applied yet — this is the gap the agent chases.",
-           APPLIED: "An application is in process.",
-           CLAIMED: "The money has been sanctioned or paid.",
-           REJECTED: "The application was rejected — see the Application Tracker for why." }[rung] || "") +
-        (scheme.application_opens ? " Window " + esc(scheme.application_opens) + " → " +
-          esc(scheme.application_closes || "—") + "." : "");
+      ? "One rule failed — does not qualify for this scheme."
+      : "Qualifies" + (amt ? " — worth " + inr(amt) : "") + ". " +
+        ({ ELIGIBLE: "Has not applied yet.",
+           APPLIED: "Application in process.",
+           CLAIMED: "Money sanctioned or paid.",
+           REJECTED: "Application was rejected." }[rung] || "");
     return '<div class="rules">' + ruleRows + '</div><div class="vl">' + verdict + "</div>";
   }
 
@@ -844,8 +865,8 @@
       var cols = "minmax(210px,1.5fr) repeat(" + SCHEMES.length + ", minmax(104px,1fr))";
       var head = '<div class="a42-mxrow head" style="grid-template-columns:' + cols + '"><div>Student</div>' +
         SCHEMES.map(function (s) {
-          return '<div class="a42-mxhead' + (MX.scheme === s.code ? " on" : "") + '">' + esc(s.code) +
-            "<div>" + esc(shortScheme(s.name)) + "</div></div>";
+          return '<div class="a42-mxhead' + (MX.scheme === s.code ? " on" : "") + '">' +
+            esc(shortScheme(s.name)) + "</div>";
         }).join("") + "</div>";
       var body = pageOf(list, MX.page, PAGE).map(function (r) {
         var st = r.student;
@@ -856,7 +877,7 @@
           var key = st.roll_no + "|" + s.code;
           return '<button class="a42-st ' + u.cls + (MX.open === key ? " sel" : "") +
             (MX.scheme && MX.scheme !== s.code ? " dim" : "") + '" data-a42-why="' + esc(key) +
-            '" title="' + esc(st.full_name + " · " + shortScheme(s.name) + " — " + u.long + ". Click for the rule trace.") + '">' +
+            '" title="' + esc(st.full_name + " · " + shortScheme(s.name) + " — " + u.long + " — tap to see why") + '">' +
             "<i>" + u.icon + "</i><span>" + u.label + "</span></button>";
         }).join("");
         var why = "";
@@ -866,7 +887,7 @@
           var os = BYCODE[code];
           if (oc && os) {
             why = '<div class="a42-why"><div class="hd"><div>' +
-              '<div class="a42-eyebrow">Rule trace · the engine’s own working</div>' +
+              '<div class="a42-eyebrow">Why</div>' +
               '<div class="ti">' + esc(st.full_name) + " (" + esc(st.roll_no) + ") × " + esc(os.name) + "</div></div>" +
               '<button class="cl" data-a42-why-close>close</button></div>' + ruleTrace(oc, os) +
               '<div class="a42-whyact">' +
@@ -885,7 +906,7 @@
           cells + "</div>" + why;
       }).join("");
       host.innerHTML =
-        '<div class="a42-listmeta">' + rangeText(list.length, MX.page, PAGE, "students") + "</div>" +
+        '<div class="a42-listmeta">' + rangeCompact(list.length, MX.page, PAGE, "students") + "</div>" +
         (body ? '<div class="a42-mxwrap"><div class="a42-mxgrid" style="min-width:' +
             (210 + SCHEMES.length * 112) + 'px">' + head + body + "</div></div>"
           : '<div class="a42-note ok"><i>·</i><span>No students match — clear the search or change the filters.</span></div>') +
@@ -984,11 +1005,13 @@
         });
         batches.sort();
 
+        // Horizontal legend — a glyph tile + its plain label, wrapping. "Got money"
+        // matches the Coverage legend; the grid and legend explain themselves, so the
+        // old heading + per-scheme ladder are gone.
         var legend = RUNG_ORDER.map(function (k) {
           var u = RUNG[k];
-          return '<span class="a42-rungkey"><span class="a42-st ' + u.cls + ' key"><i>' + u.icon +
-            "</i></span><span><b>" + esc(u.label) + "</b><em>" + esc(u.long) + " · " + nf(counts[k] || 0) +
-            "</em></span></span>";
+          return '<span class="a42-mxleg"><span class="a42-st ' + u.cls + ' key"><i>' + u.icon +
+            "</i></span>" + esc(u.label) + "</span>";
         }).join("");
 
         var sel = function (id, label, opts, cur) {
@@ -997,31 +1020,24 @@
           }).join("") + "</select>";
         };
 
+        var cta = counts.ELIGIBLE
+          ? '<div class="a42-mxcta"><span><b>' + nf(counts.ELIGIBLE) + "</b> eligible matches have no " +
+              "application yet. Notices wait for your approval.</span>" +
+              (role.canAct ? '<button class="a42-btn" id="a42-notifyall">Draft notices</button>'
+                : '<span class="a42-chip" style="background:#eef1f7;color:#5b6478">\u{1F512} read-only in this role</span>') +
+            "</div>"
+          : "";
+
         el.innerHTML =
-          '<div class="a42-ledger">' +
-            '<div class="a42-eyebrow">Eligible → applied → claimed · ' + nf(rows.length) + " students × " +
-              SCHEMES.length + " schemes</div>" +
-            '<h2 class="a42-h2">' + nf(decisions) + " decisions, each one openable.</h2>" +
-            '<div class="sub" style="margin-top:8px;max-width:74ch">For every scheme: how many students the rules ' +
-              "let in, how many of them applied, and how many actually got the money. Tap a number to list " +
-              "those students.</div>" +
-            '<div class="a42-ladders">' + ladder() + "</div>" +
-            (role.canAct && counts.ELIGIBLE
-              ? '<div class="a42-notifybar"><span><b>' + nf(counts.ELIGIBLE) + "</b> eligible matches have no " +
-                  "application. Draft a notice for each — benefit, deadline and exact documents — and they " +
-                  "wait in Agent Activity until you approve them.</span>" +
-                  '<button class="a42-btn" id="a42-notifyall">Draft notices</button></div>'
-              : "") +
-          "</div>" +
-          '<div class="a42-ledger" style="animation-delay:.1s" data-a42-list>' +
-            '<div class="a42-rungkeys">' + legend + "</div>" +
+          '<div class="a42-ledger" data-a42-list>' +
+            '<div class="a42-mxlegend">' + legend + "</div>" +
             '<div class="a42-toolbar">' +
               '<label class="a42-search"><span aria-hidden="true">⌕</span>' +
-                '<input id="a42-mxq" type="search" placeholder="Search a name or register number" value="' + esc(MX.q) + '"></label>' +
+                '<input id="a42-mxq" type="search" placeholder="Search name or register number" value="' + esc(MX.q) + '"></label>' +
               sel("a42-mxshow", "Show", [["all", "All students"], ["any", "Eligible for a scheme"],
                 ["ELIGIBLE", "Eligible, not applied"], ["tried", "Applied (any outcome)"],
                 ["APPLIED", "Applied, in process"],
-                ["CLAIMED", "Claimed"], ["REJECTED", "Rejected"], ["none", "Not eligible for any"]], MX.show) +
+                ["CLAIMED", "Got money"], ["REJECTED", "Rejected"], ["none", "Not eligible for any"]], MX.show) +
               sel("a42-mxscheme", "Scheme", [["", "Any scheme"]].concat(SCHEMES.map(function (s) {
                 return [s.code, shortScheme(s.name)];
               })), MX.scheme) +
@@ -1031,6 +1047,7 @@
               '<button class="a42-btn ghost small" id="a42-mxreset">Reset</button>' +
             "</div>" +
             '<div id="a42-mxlist"></div>' +
+            cta +
           "</div>";
 
         var na = $("#a42-notifyall", el);
@@ -1099,66 +1116,31 @@
   var RC = { open: false, page: 1 };
 
   function installReconciliation(getData, errorCard) {
-    var QUIET = [];
-
-    function reconCard(r, i, canAct) {
-      var rec = r.recommend_suppress;
-      var status = rec
-        ? (canAct
-            ? '<button class="a42-btn" data-a42-suppress="' + esc(r.reminder_dispatch_id) + '">' +
-              "Approve suppression</button>"
-            : '<span class="a42-chip" style="background:#fff7ed;color:#8a4b08">suppress recommended · ' +
-              "read-only in this role</span>")
-        : r.active_reminder
-          ? '<span class="a42-chip" style="background:#fef9c3;color:#854d0e">reminder active · dues exceed the award</span>'
-          : '<span class="a42-chip" style="background:#dcfce7;color:#166534">reconciled</span>';
-      return '<div class="a42-recon' + (rec ? " flag" : "") + '" style="animation-delay:' +
-          (Math.min(i, 10) * 0.06).toFixed(2) + 's">' +
-        '<div class="hd">' +
-          '<button class="who"' + (r.student_id ? ' data-a42-story="' + esc(r.student_id) + '"' : "") + ">" +
-            '<span class="nm">' + esc(r.full_name) + "</span>" +
-            '<span class="rl">' + esc(r.roll_no) + " · " + esc(r.scheme_name) + "</span></button>" +
-          '<div class="st">' + status + "</div>" +
-        "</div>" +
-        '<div class="gr">' +
-          '<div class="cell"><div class="k">Scholarship covers</div>' +
-            '<div class="v blue">' + inr(r.covered_amount) + "</div></div>" +
-          '<div class="cell"><div class="k">Fee still due</div>' +
-            '<div class="v" style="color:' + (r.outstanding > 0 ? "#e8930c" : "#12a150") + '">' +
-              inr(r.outstanding) + "</div></div>" +
-          '<div class="cell"><div class="k">Ledger expects</div>' +
-            '<div class="s" style="color:' + (r.ledger_mismatch ? "#8a4b08" : "#166534") + '">' +
-              inr(r.scholarship_expected) + (r.ledger_mismatch ? " → should be " + inr(r.ledger_expected) : " ✓") + "</div></div>" +
-          '<div class="cell"><div class="k">Active reminder</div>' +
-            '<div class="s" style="color:' + (r.active_reminder ? "#991b1b" : "#166534") + '">' +
-              (r.active_reminder ? esc(r.reminder_segment || "reminder queued") : "none") + "</div></div>" +
-        "</div>" +
-        '<div class="rs">' + esc(r.recommendation ||
-          (r.full_name + " (" + r.roll_no + "): the scholarship and the fee ledger already agree — " +
-           "no reminder is queued and nothing needs a human.")) + "</div>" +
+    // One approval row: the fee bill on one side, what Agent 40's ledger expects
+    // on the other. The mismatch (a ₹0 the ledger should not show) is the point-7 bug.
+    function reconRow(r, canAct) {
+      var covers = Number(r.covered_amount) || 0, out = Number(r.outstanding) || 0;
+      var clears = covers >= out ? "clears all of it" : "clears part of it";
+      var expect = Number(r.scholarship_expected) || 0;
+      var ledgerVal = expect ? inr(expect) : "nothing";
+      var ledgerInk = r.ledger_mismatch ? "#b0700a" : (expect ? "#166534" : "#b0700a");
+      var ledgerNote = r.ledger_mismatch ? "should be " + inr(r.ledger_expected)
+        : (expect ? "correct" : "no scholarship recorded");
+      var action = canAct
+        ? '<button class="a42-btn small" data-a42-suppress="' + esc(r.reminder_dispatch_id) + '">Approve suppression</button>'
+        : '<span class="a42-chip" style="background:#eef1f7;color:#5b6478">\u{1F512} read-only</span>';
+      return '<div class="a42-recrow">' +
+        '<button class="who"' + (r.student_id ? ' data-a42-story="' + esc(r.student_id) + '"' : "") +
+          '><div class="nm">' + esc(r.full_name) + '</div><div class="rl">' + esc(r.roll_no) + "</div></button>" +
+        '<div class="sch">' + esc(shortScheme(r.scheme_name)) +
+          (r.active_reminder ? '<div class="note">Fee reminder active</div>' : "") + "</div>" +
+        '<div class="fee"><div class="top"><span class="v">' + inr(out) + '</span><span class="lb">shown unpaid</span></div>' +
+          '<div class="cov">the ' + inr(covers) + " award " + clears + "</div></div>" +
+        '<div class="led"><div class="v" style="color:' + ledgerInk + '">' + ledgerVal + "</div>" +
+          '<div class="nt">' + ledgerNote + "</div></div>" +
+        '<div class="act">' + action + "</div>" +
       "</div>";
     }
-
-    function renderQuiet() {
-      var host = $("#a42-rclist");
-      if (!host) return;
-      if (!RC.open) { host.innerHTML = ""; return; }
-      RC.page = clampPage(RC.page, QUIET.length, PAGE);
-      var rows = pageOf(QUIET, RC.page, PAGE).map(function (r) {
-        return "<tr><td><b>" + esc(r.roll_no) + '</b><br><span class="s">' + esc(r.full_name) + "</span></td>" +
-          "<td>" + esc(shortScheme(r.scheme_name)) + "</td>" +
-          '<td class="m">' + inr(r.covered_amount) + "</td>" +
-          '<td class="m">' + inr(r.outstanding) + "</td>" +
-          '<td><span class="a42-chip" style="background:#dcfce7;color:#166534">reconciled</span></td></tr>';
-      }).join("");
-      host.innerHTML =
-        '<div class="a42-listmeta">' + rangeText(QUIET.length, RC.page, PAGE, "reconciled awards") + "</div>" +
-        '<div class="a42-tablewrap"><table class="a42-table"><thead><tr>' +
-          "<th>Student</th><th>Scheme</th><th>Covers</th><th>Fee due</th><th>Status</th>" +
-        "</tr></thead><tbody>" + rows + "</tbody></table></div>" +
-        pager("rc", QUIET.length, RC.page, PAGE);
-    }
-    PAGERS.rc = function (p) { RC.page = p; renderQuiet(); };
 
     window.loaders.reconciliation = async function () {
       var el = $("#panel-reconciliation");
@@ -1169,54 +1151,68 @@
         var list = d.results || [];
         if (role.student) list = list.filter(function (r) { return r.roll_no === role.student; });
 
-        // Anything a human should look at gets a card; the rest agree already.
-        var loud = role.student ? list : list.filter(function (r) { return r.recommend_suppress || r.active_reminder || r.ledger_mismatch; });
-        QUIET = role.student ? [] : list.filter(function (r) { return !r.recommend_suppress && !r.active_reminder && !r.ledger_mismatch; });
-        var toApprove = list.filter(function (r) { return r.recommend_suppress; });
-        var money = toApprove.reduce(function (t, r) { return t + (Number(r.outstanding) || 0); }, 0);
-
-        var cards = loud.map(function (r, i) { return reconCard(r, i, canAct); }).join("");
+        var loud = role.student ? list : list.filter(function (r) { return r.recommend_suppress; });
+        var quiet = role.student ? [] : list.filter(function (r) { return !r.recommend_suppress; });
+        var wrongly = loud.reduce(function (t, r) { return t + (Number(r.outstanding) || 0); }, 0);
         var ledgerN = d.ledger_sync_count || 0;
-        var ledgerBar = role.student ? "" : (ledgerN
-          ? '<div class="a42-notifybar warn"><span><b>' + nf(ledgerN) + "</b> fee demand(s) in Agent 40’s ledger " +
-              "expect a different scholarship amount than was sanctioned. Syncing sets " +
-              "<code>fee_demand.scholarship_expected</code> to the live awards.</span>" +
-              (canAct ? '<button class="a42-btn" id="a42-ledgersync">Approve ledger sync</button>'
-                      : '<span class="a42-chip" style="background:#fff7ed;color:#8a4b08">read-only in this role</span>') + "</div>"
-          : '<div class="a42-note ok"><i>✓</i><span>Fee ledger (Agent 40) agrees with every live award — ' +
-              "each fee demand already expects the scholarship that was sanctioned.</span></div>");
+        var matchedMoney = quiet.reduce(function (t, r) { return t + (Number(r.covered_amount) || 0); }, 0);
+        var quietReminders = quiet.filter(function (r) { return r.active_reminder; }).length;
+
+        setMeta("reconciliation", (d.suppress_count || 0) + " to approve");
+
+        if (role.student) {
+          el.innerHTML =
+            '<div class="a42-ledger">' +
+              '<h2 class="a42-h3" style="margin-bottom:4px">Your fees and scholarship</h2>' +
+              '<div class="sub" style="margin-bottom:14px">If a scholarship covers your dues, reminders to you ' +
+                "should stop — this shows whether they have.</div>" +
+              (list.length
+                ? '<div class="a42-recrows">' + list.map(function (r) { return reconRow(r, false); }).join("") + "</div>"
+                : '<div class="a42-note ok"><i>✓</i><span>No live award to reconcile against your fees.</span></div>') +
+            "</div>";
+          syncRail();
+          return;
+        }
+
+        var rows = loud.map(function (r) { return reconRow(r, canAct); }).join("") ||
+          '<div class="a42-note ok"><i>✓</i><span>Nothing needs a human — every award and fee demand agree.</span></div>';
+
+        var tiles = [
+          { v: nf(list.length), k: "Awards checked", n: "every live scholarship", color: "#12224e" },
+          { v: nf(loud.length), k: "Reminders to stop", n: "fees already covered", color: "#e8930c" },
+          { v: nf(ledgerN), k: "Ledger mismatches", n: "Agent 40 expects the wrong amount", color: "#8a4b08" },
+          { v: lakh(wrongly), k: "Wrongly chased", n: "already covered by an award", color: "#c0392f" }
+        ];
 
         el.innerHTML =
           '<div class="a42-ledger">' +
-            '<div class="a42-track-head"><div>' +
-              '<div class="a42-eyebrow">Scholarships set against the fee ledger</div>' +
-              '<h2 class="a42-h2">' + (role.student ? "Your fees and scholarship"
-                : nf(toApprove.length) + " student" + (toApprove.length === 1 ? " is" : "s are") +
-                  " being chased for fees a scholarship already covers.") + "</h2>" +
-              "<p>" + (role.student
-                ? "If a scholarship covers your dues, reminders to you should stop — this shows whether they have."
-                : "Checked " + nf(list.length) + " live awards. Where the award covers the dues and a reminder is " +
-                  "still going out, the agent <b>recommends</b> stopping it — and waits for you.") + "</p>" +
+            '<div class="a42-rechd"><div>' +
+              '<h2 class="a42-h3" style="margin-bottom:4px">' + nf(loud.length) + " student" +
+                (loud.length === 1 ? "" : "s") + " chased for fees a scholarship already covers</h2>" +
+              '<div class="sub" style="max-width:78ch">Agent 40’s fee ledger still shows these balances ' +
+                "outstanding, so Agent 41 keeps sending reminders. Suppress the reminder, and correct the " +
+                "balance the ledger expects.</div></div>" +
+              (ledgerN && canAct
+                ? '<button class="a42-btn" id="a42-ledgersync">Adjust ' + nf(ledgerN) + " outstanding balance" +
+                    (ledgerN === 1 ? "" : "s") + "</button>"
+                : "") +
             "</div>" +
-            (role.student ? "" : '<div class="a42-track-money"><div class="v">' + lakh(money) + "</div>" +
-              '<div class="k">wrongly chased</div></div>') +
-            "</div>" +
-            '<div class="a42-quote">“Reminders MUST be suppressed where a sanctioned scholarship or ' +
-              "approved installment plan covers the dues. This is the most common cause of avoidable " +
-              "distress in fee follow-up.” — comment in the platform schema (finance.reminder_dispatch).</div>" +
-            ledgerBar +
-            '<div class="a42-recons">' + (cards ||
-              '<div class="a42-note ok"><i>✓</i><span>Nothing needs a human here — every award and fee demand agree.</span></div>') + "</div>" +
+            '<div class="a42-rechead"><div>Student</div><div>Scheme</div><div>Outstanding on the fee bill</div>' +
+              '<div>Agent 40 ledger expects</div><div class="r">Action</div></div>' +
+            rows +
+            '<div class="a42-safeband"><span><b>' + nf(quiet.length) + "</b> award" + (quiet.length === 1 ? "" : "s") +
+              " already line up with the fees — nothing to do.</span>" +
+              '<button class="a42-btn ghost small" id="a42-rctoggle">' + (RC.open ? "Hide detail" : "Show detail") + "</button></div>" +
+            (RC.open ? '<div class="a42-safedetail">' + nf(quiet.length) + " matched awards · " + lakh(matchedMoney) +
+              " set against fees · " + nf(quietReminders) + " active reminders.</div>" : "") +
           "</div>" +
-          (QUIET.length
-            ? '<div class="a42-ledger" style="animation-delay:.1s" data-a42-list>' +
-                '<div class="a42-schemehd"><div><h2 class="a42-h3" style="margin-bottom:4px">' + nf(QUIET.length) +
-                  " awards already reconciled</h2>" +
-                  '<div class="sub">No reminder is going out and nothing needs a human.</div></div>' +
-                  '<button class="a42-btn ghost small" id="a42-rctoggle">' + (RC.open ? "Hide list" : "Show list") + "</button></div>" +
-                '<div id="a42-rclist" style="margin-top:14px"></div>' +
-              "</div>"
-            : "");
+          '<div class="a42-ledger a42-recfound" style="animation-delay:.1s">' +
+            '<div class="a42-eyebrow">What the check found</div>' +
+            '<div class="a42-rectiles">' + tiles.map(function (t) {
+              return '<div class="tile"><div class="v" style="color:' + t.color + '">' + t.v + "</div>" +
+                '<div class="k">' + esc(t.k) + '</div><div class="n">' + esc(t.n) + "</div></div>";
+            }).join("") + "</div>" +
+          "</div>";
 
         var ls = $("#a42-ledgersync", el);
         if (ls) ls.addEventListener("click", function () {
@@ -1226,13 +1222,9 @@
         });
         var tg = $("#a42-rctoggle", el);
         if (tg) tg.addEventListener("click", function () {
-          RC.open = !RC.open; RC.page = 1;
-          tg.textContent = RC.open ? "Hide list" : "Show list";
-          renderQuiet();
+          RC.open = !RC.open;
+          window.loaders.reconciliation();
         });
-        renderQuiet();
-
-        setMeta("reconciliation", (d.suppress_count || 0) + " to approve");
         syncRail();
       } catch (e) { errorCard(el, e); }
     };
@@ -1272,6 +1264,40 @@
     if (Array.isArray(v)) v = v.join(" / ");
     else if (typeof v === "number" && v >= 1000) v = Number(v).toLocaleString("en-IN");
     return r.field + " " + (OP_TEXT[r.op] || r.op) + " " + v;
+  }
+
+  // A stored machine rule → a plain sentence a first-time visitor can read. The
+  // rule itself stays machine-evaluable JSON; this is only the display layer.
+  function lakhWord(n) {
+    n = Number(n) || 0;
+    var l = n / 100000;
+    return "₹" + (l % 1 === 0 ? l.toFixed(0) : l.toFixed(1)) + " lakh";
+  }
+  function plainRule(r) {
+    var f = r.field, op = r.op, v = r.value;
+    if (f === "annual_income" || f === "family_income") return "Family income up to " + lakhWord(v);
+    if (f === "social_category") {
+      var list = Array.isArray(v) ? v : [v];
+      return "Category " + list.join(" or ");
+    }
+    if (f === "cgpa") return "CGPA " + Number(v).toFixed(1) + " or above";
+    if (f === "gender") return v === "F" ? "Women students" : (v === "M" ? "Men students" : "Gender " + v);
+    if (f === "attendance_pct") return "Keeps it above " + v + "% attendance";
+    if (f === "backlog_count") return "No pending backlogs";
+    return critText(r);   // safe fallback for an unseen field
+  }
+  function plainRenewal(s) {
+    if (!s.renewal_required) return "Not renewable — one award per cycle";
+    var rules = (s.renewal_criteria && (s.renewal_criteria.all || s.renewal_criteria.any)) || [];
+    var att = null, cg = null;
+    rules.forEach(function (r) {
+      if (r.field === "attendance_pct") att = r.value;
+      if (r.field === "cgpa") cg = r.value;
+    });
+    if (att != null && cg != null) return "Keeps " + att + "% attendance and CGPA " + Number(cg);
+    if (att != null) return "Keeps it above " + att + "% attendance";
+    if (cg != null) return "Keeps CGPA " + Number(cg) + " or above";
+    return "Renewable — conditions on file";
   }
 
   // Set by the hook below, rendered once at the top of the panel, then dismissed.
@@ -1375,66 +1401,57 @@
         var eligibleByName = {};
         if (cov) cov.per_scheme.forEach(function (s) { eligibleByName[s.scheme_name] = s.eligible; });
 
+        // Opens with the "+ Add scheme" button alone, right-aligned; a locked role
+        // gets a one-line note instead. The comparison card is gone.
         var head = canAct
-          ? '<div class="a42-ledger a42-addbar"><button class="a42-btn" id="a42-open-scheme">+ Add scheme</button>' +
-            "<span>Register a scholarship and it is matched against every student <b>before the form " +
-            "closes</b> — no batch job, no overnight wait. The trace is logged in Agent Activity.</span></div>"
+          ? '<div class="a42-addrow"><button class="a42-btn" id="a42-open-scheme">+ Add scheme</button></div>'
           : '<div class="a42-ledger a42-lock"><span class="ic">\u{1F512}</span><span>' +
             (role.student
-              ? "Every scheme’s rules are public to you — the same JSON the engine evaluated " +
-                "against your record. Registering a scheme is the Scholarship Officer’s action."
+              ? "Every scheme’s rules are shown here in plain language — the same rules the engine " +
+                "evaluated against your record. Registering a scheme is the Scholarship Officer’s action."
               : "This role reads the register. Registering a scheme is the Scholarship Officer’s " +
                 "action, and it is logged against their name.") + "</span></div>";
 
         var cards = schemes.map(function (s, i) {
           var crit = s.eligibility_criteria || {};
           var rules = (crit.all || crit.any || []).map(function (r) {
-            return "<code>" + esc(critText(r)) + "</code>";
-          }).join("");
-          var docs = (s.required_documents || []).map(function (x) {
-            return '<span class="a42-doc">' + esc(x) + "</span>";
-          }).join("") || '<span class="a42-doc">As per scheme</span>';
-          var ren = s.renewal_required
-            ? ((s.renewal_criteria && (s.renewal_criteria.all || s.renewal_criteria.any) || [])
-                .map(function (r) { return '<code class="ren">' + esc(critText(r)) + "</code>"; }).join("")
-               || '<code class="ren">renewable · conditions on file</code>')
-            : '<code class="none">Not renewable — one award per cycle</code>';
+            return '<span class="rule">' + esc(plainRule(r)) + "</span>";
+          }).join("") || '<span class="rule">Open to every student</span>';
+          var docsTxt = (s.required_documents || []).map(esc).join(" · ") || "As per scheme";
+          var renewable = !!s.renewal_required;
           var n = eligibleByName[s.name];
+          var providerYear = esc(s.provider_name || s.provider_type || "—") + " · " +
+            inr(s.benefit_amount) + " a year" +
+            (s.application_opens ? " · open " + esc(fmtDate(s.application_opens)) + " – " +
+              esc(fmtDate(s.application_closes)) : "");
 
           SCHEME_BY_CODE[s.code] = s;
           var tools = canAct
-            ? '<div class="a42-schemetools">' +
-                '<button class="a42-btn ghost small" data-a42-edit="' + esc(s.code) + '">Edit for this cycle</button>' +
-                '<button class="a42-btn ghost small" data-a42-retire="' + esc(s.code) + '" data-active="' +
-                  (s.is_active ? "1" : "0") + '">' + (s.is_active ? "Retire scheme" : "Reinstate scheme") + "</button></div>"
+            ? '<div class="tools">' +
+                '<button class="lnk" data-a42-edit="' + esc(s.code) + '">Edit for this cycle</button>' +
+                '<button class="lnk mute" data-a42-retire="' + esc(s.code) + '" data-active="' +
+                  (s.is_active ? "1" : "0") + '">' + (s.is_active ? "Retire" : "Reinstate") + "</button></div>"
             : "";
-          return '<div class="a42-ledger' + (s.is_active === false ? " retired" : "") + '" style="animation-delay:' + (0.06 + i * 0.05).toFixed(2) + 's">' +
+          return '<div class="a42-schemecard2' + (s.is_active === false ? " retired" : "") +
+              '" style="animation-delay:' + (0.02 + i * 0.05).toFixed(2) + 's">' +
             (s.is_active === false ? '<div class="a42-retired">Retired — not matched against students</div>' : "") +
-            '<div class="a42-schemehd">' +
-              "<div><h2 class=\"a42-h3\" style=\"margin-bottom:4px\">" + esc(s.name) +
-                ' <span class="a42-chip" style="background:#e6eefc;color:#2f52c4">' +
-                esc(s.provider_type) + "</span></h2>" +
-                '<div class="sub">' + esc(s.provider_name || "—") + " · " +
-                  esc(s.benefit_type) + " · " + inr(s.benefit_amount) +
-                  (s.application_opens ? " · window " + esc(s.application_opens) + " → " +
-                    esc(s.application_closes || "—") : "") + "</div></div>" +
-              (n != null ? '<div class="a42-schemecount"><div class="v">' + n + "</div>" +
-                '<div class="k">students match</div></div>' : "") +
+            '<div class="hd"><div class="ti"><h3>' + esc(s.name) + "</h3>" +
+              '<div class="pv">' + providerYear + "</div></div>" +
+              (n != null ? '<div class="ct"><span class="v">' + n + '</span><span class="k">students qualify</span></div>' : "") +
             "</div>" +
-            '<div class="a42-schemegrid">' +
-              '<div><div class="a42-eyebrow">Eligibility rules (machine-evaluable)</div>' +
-                '<div class="a42-codes">' + (rules ||
-                  "<code>no rules — open to every student</code>") + "</div></div>" +
-              "<div><div class=\"a42-eyebrow\">Documents the agent collects</div>" +
-                '<div class="a42-docs">' + docs + "</div>" +
-                '<div class="a42-eyebrow" style="margin-top:16px">Renewal conditions</div>' +
-                '<div class="a42-codes">' + ren + "</div></div>" +
-            "</div>" + tools +
+            '<div class="cols">' +
+              '<div class="col"><div class="hh">Who qualifies</div><div class="rules">' + rules + "</div></div>" +
+              '<div class="col"><div class="hh">Documents</div><div class="docs">' + docsTxt + "</div></div>" +
+              '<div class="col"><div class="hh">To keep it next year</div>' +
+                '<div class="ren' + (renewable ? "" : " mute") + '">' + esc(plainRenewal(s)) + "</div>" +
+                tools + "</div>" +
+            "</div>" +
           "</div>";
         }).join("");
 
-        el.innerHTML = matchBanner() + head + (cards ||
-          '<div class="a42-ledger"><h2 class="a42-h3">No schemes registered yet</h2></div>');
+        el.innerHTML = matchBanner() + head +
+          (cards ? '<div class="a42-schemelist">' + cards + "</div>"
+            : '<div class="a42-ledger"><h2 class="a42-h3">No schemes registered yet</h2></div>');
 
         var mx = $("#a42-match-x", el);
         if (mx) mx.addEventListener("click", function () {
@@ -1490,11 +1507,11 @@
       " students = " + checks + " deterministic checks"]);
     ((cov && cov.per_scheme) || []).forEach(function (s, i) {
       L.push([1560 + i * 180, "#ffd27a", "DECIDE  " + padRight(s.scheme_code, 13) + "→  " +
-        s.eligible + " eligible · " + s.covered + " covered · gap " + s.gap]);
+        s.eligible + " eligible · " + (s.eligible_claimed != null ? s.eligible_claimed : s.covered) + " covered · gap " + s.gap]);
     });
     if (cov) {
       L.push([2340, "#ffd27a", "DECIDE  " + cov.total_eligible + " eligible matches · " +
-        cov.total_covered + " covered · gap = " + cov.coverage_gap]);
+        (cov.total_claimed != null ? cov.total_claimed : cov.total_covered) + " covered · gap = " + cov.coverage_gap]);
     }
     var SHOW = 3;   // a 1000-student run: narrate a few, count the rest
     atRisk.slice(0, SHOW).forEach(function (r, i) {
@@ -1519,12 +1536,16 @@
         " → class-3 action, queued for human approval"]);
     }
     L.push([3880, "#8fe0b0", "MEASURE coverage " + (cov && cov.total_eligible
-      ? Math.round(1000 * cov.total_covered / cov.total_eligible) / 10 : 0) + "% · gap " +
+      ? Math.round(1000 * (cov.total_claimed != null ? cov.total_claimed : cov.total_covered) / cov.total_eligible) / 10 : 0) + "% · gap " +
       (cov ? cov.coverage_gap : 0) + " · at-risk " + atRisk.length +
       " · awaiting approval " + toSuppress.length]);
     L.push([4080, "#8fe0b0", "agent_run " + runId + " · status=COMPLETED · provenance rows logged: " +
       (db.runs_logged != null ? db.runs_logged : students.length)]);
-    return L.map(function (l) { return { d: l[0], c: l[1], t: l[2] }; });
+    // The trace console is a light-blue surface, so remap the dark-bg pastel inks
+    // to darker variants that stay legible on it.
+    var CMAP = { "#8fe0b0": "#0f8a44", "#9fb6e4": "#2f52c4", "#ffd27a": "#b0700a",
+      "#ff9f9f": "#c0392f", "#9fe6ff": "#0e7aa8", "#e8930c": "#b0700a" };
+    return L.map(function (l) { return { d: l[0], c: (CMAP[l[1]] || l[1]), t: l[2] }; });
   }
   function padRight(s, n) {
     s = String(s || "");
@@ -1556,8 +1577,8 @@
       var box = $("#a42-tracebox");
       if (!box) return;
       var lines = traceStep === 0
-        ? '<div class="ln"><span class="ts">›</span><span style="color:#4a6ba8">' +
-          "Press “Replay the last agent run” to watch the trace, step by step.</span></div>"
+        ? '<div class="ln"><span class="ts">›</span><span style="color:#8290ab">' +
+          "Press the button to replay the last run.</span></div>"
         : TRACE.slice(0, traceStep).map(function (l, i) {
             return '<div class="ln"><span class="ts">' + String(i).padStart(2, "0") + " · " +
               String(l.d).padStart(4, "0") + 'ms</span><span style="color:' + l.c + '">' +
@@ -1632,12 +1653,13 @@
           "4": "gap " + (cov ? cov.coverage_gap : 0) + " · at-risk " + atRisk
         };
 
+        // Compressed: number + label on one row, the live stat underneath — no
+        // paragraph, no numbered icon tile. The card's colour is the signal.
         var phases = PHASE_DEFS.map(function (p) {
-          return '<div class="a42-phase" data-phase="' + p.n + '" data-from="' + p.from +
+          return '<div class="a42-phase mini" data-phase="' + p.n + '" data-from="' + p.from +
             '" data-to="' + p.to + '">' +
             '<div class="ph"><span class="dot">' + p.n + "</span>" +
             '<span class="lb">' + esc(p.label) + "</span></div>" +
-            '<div class="ds">' + esc(p.desc) + "</div>" +
             '<div class="stat">waiting…</div></div>';
         }).join("");
 
@@ -1659,38 +1681,30 @@
             '<div class="bt">' + btns + "</div></div>";
         }).join("");
 
+        var allDone = runs.every(function (r) { return r.status === "SUCCEEDED" || r.status === "COMPLETED"; });
         var timeline = runs.slice(0, RUNS_SHOWN).map(function (r) {
-          var ok = r.status === "SUCCEEDED" || r.status === "COMPLETED";
-          return '<div class="a42-run"><span class="pip"></span>' +
-            '<div class="bx"><div class="hd"><span class="k">' + esc(r.trigger_type || "RUN") + "</span>" +
-              '<span class="a42-chip" style="background:' + (ok ? "#dcfce7" : "#fee2e2") +
-              ";color:" + (ok ? "#166534" : "#991b1b") + '">' + esc(r.status) + "</span></div>" +
-            '<div class="gr">' +
-              "<div><span>Request</span><b>" + esc(r.request_text || "—") + "</b></div>" +
-              "<div><span>Provenance</span><b>" + (r.input_sources || 0) + " source(s) → " +
-                (r.outputs || 0) + " output(s)</b></div>" +
-              "<div><span>Duration</span><b>" + (r.latency_ms != null ? r.latency_ms + " ms" : "—") + "</b></div>" +
-            "</div>" +
-            '<div class="wh">' + esc(String(r.started_at || "").replace("T", " ").slice(0, 19)) + "</div></div></div>";
+          return '<div class="a42-auditrow">' +
+            '<div class="tg">' + esc(r.trigger_type || "RUN") + "</div>" +
+            '<div class="rq"><div class="t">' + esc(r.request_text || "—") + "</div>" +
+              '<div class="w">' + esc(String(r.started_at || "").replace("T", " ").slice(0, 19)) + "</div></div>" +
+            '<div class="tr">' + (r.input_sources || 0) + " source(s) → " + (r.outputs || 0) + " output(s)</div>" +
+            '<div class="tk">' + (r.latency_ms != null ? r.latency_ms + " ms" : "—") + "</div>" +
+          "</div>";
         }).join("");
 
         el.innerHTML =
           '<div class="a42-dark">' +
             '<div class="a42-darkhd"><div>' +
-              '<div class="ti">Agent trace — watch it reason</div>' +
-              '<div class="sb">The agent runs in milliseconds, so this replays the last recorded run ' +
-                "step by step, at human speed. Every number shown is read back from <code>agentops</code>.</div></div>" +
+              '<div class="ti">Watch it work, step by step</div>' +
+              '<div class="sb">A real run takes milliseconds — this replays the last one at readable speed.</div></div>' +
               '<button id="a42-tracebtn" class="a42-btn">▶ Replay the last agent run</button></div>' +
             '<div class="a42-phases">' + phases + "</div>" +
             '<div class="a42-tracebox" id="a42-tracebox"></div>' +
           "</div>" +
           '<div class="a42-ledger" style="animation-delay:.12s">' +
             '<h2 class="a42-h3" style="margin-bottom:4px">Human approval queue</h2>' +
-            '<div class="sub" style="margin-bottom:16px">Class-3 agent: anything that touches a ' +
-              "student’s money or communications stops here and waits for a person." +
-              (waiting > QUEUE_SHOWN
-                ? " Showing the " + QUEUE_SHOWN + " newest of <b>" + nf(waiting) + "</b> waiting."
-                : "") + "</div>" +
+            '<div class="sub" style="margin-bottom:16px">Nothing reaches a student without your approval. ' +
+              nf(Math.min(QUEUE_SHOWN, approvals.length)) + " newest of <b>" + nf(waiting) + "</b> waiting.</div>" +
             (bulk ? '<div class="a42-bulkbar"><span>Reviewed the drafts? Approve a whole batch at once — ' +
               "money-moving recommendations still go one by one.</span>" + bulk + "</div>" : "") +
             '<div class="a42-approvals">' + (queue ||
@@ -1698,10 +1712,12 @@
             "</div></div>" +
           '<div class="a42-ledger" style="animation-delay:.2s">' +
             '<div class="a42-schemehd"><div>' +
-              '<h2 class="a42-h3" style="margin-bottom:4px">Audit trail — every agent run, logged</h2>' +
-              '<div class="sub">run → inputs (provenance) → outputs (reasoning) → risk flags. ' +
-                "The evidence trail an accreditation audit walks back through.</div></div>" +
-              '<span class="a42-count">' + runs.length + " record(s)</span></div>" +
+              '<h2 class="a42-h3" style="margin-bottom:4px">Every run, logged</h2>' +
+              '<div class="sub">What started it, what it read, how long it took.</div></div>' +
+              '<span class="a42-count">last ' + runs.length + " run" + (runs.length === 1 ? "" : "s") +
+                (allDone ? " · all completed" : "") + "</span></div>" +
+            '<div class="a42-audithead"><div>Trigger</div><div>Request</div><div>Tables read</div>' +
+              '<div class="r">Took</div></div>' +
             '<div class="a42-runs">' + (timeline ||
               '<div class="a42-note ok"><i>✓</i><span>No runs logged yet.</span></div>') + "</div></div>";
 
@@ -1897,47 +1913,44 @@
   var RN = { open: false, page: 1 };
 
   function installRenewal(getData, errorCard) {
-    var FINE = [], LO = 55, HI = 100, FLOOR = 75;
-
-    function axisRow(r, i) {
-      var SPAN = HI - LO, floorPos = ((FLOOR - LO) / SPAN) * 100;
+    // The redesigned attendance cell: a fill to the student's attendance, the
+    // shortfall stretch up to the floor, and a tick at the floor itself.
+    function attCell(r) {
       var att = Number(r.student.attendance_pct) || 0;
-      var level = r.risk_level || "NONE";
-      var under = floorOf(r.criteria_result) - att;
-      var cls = { NONE: "none", WATCH: "atrisk", AT_RISK: "atrisk", LIKELY_LOSS: "loss" }[level] || "none";
-      var dot = { NONE: "#12a150", WATCH: "#e8930c", AT_RISK: "#e8930c", LIKELY_LOSS: "#d8443c" }[level] || "#12a150";
+      var floor = floorOf(r.criteria_result);
+      var shortfall = Math.round((floor - att) * 10) / 10;
+      var loss = r.risk_level === "LIKELY_LOSS" || shortfall > 10;
+      var barColor = loss ? "#7f9df0" : "#9cbcfd";
+      var ink = loss ? "#c0392f" : "#b0700a";
+      var attW = Math.max(0, Math.min(100, att));
+      var gapRight = Math.max(0, 100 - floor);
+      var phrase = shortfall > 0
+        ? (shortfall === 1 ? "1 pt short of " + floor + "%" : shortfall + " pts short of " + floor + "%")
+        : "at the line";
+      return '<div class="a42-attcell"><div class="trk">' +
+          '<span class="fill" style="width:' + attW + '%;background:' + barColor + '"></span>' +
+          '<span class="gap" style="left:' + attW + '%;right:' + gapRight + '%"></span>' +
+          '<span class="tick" style="left:' + floor + '%"></span></div>' +
+        '<div class="ft"><span class="pc" style="color:' + ink + '">' + att + "%</span>" +
+          '<span class="sh">' + esc(phrase) + "</span></div></div>";
+    }
+
+    function riskRow(r, i) {
+      var loss = r.risk_level === "LIKELY_LOSS" ||
+        (floorOf(r.criteria_result) - (Number(r.student.attendance_pct) || 0)) > 10;
       var amt = r.sanctioned_amount != null ? r.sanctioned_amount : r.amount;
-      var pos = Math.max(0, Math.min(100, ((att - LO) / SPAN) * 100));
-      var left = Math.min(pos, floorPos), width = Math.abs(pos - floorPos);
-      return '<div class="a42-axisrow" style="animation-delay:' + (Math.min(i, 12) * 0.06).toFixed(2) + 's">' +
-        '<div><div class="who">' + esc(r.student.full_name) + "</div>" +
-          '<div class="sub">' + esc(r.student.roll_no) + " · " + esc(shortScheme(r.scheme_name)) +
-          " · CGPA " + esc(r.student.cgpa) + "</div></div>" +
-        '<div class="a42-track">' +
-          '<div class="a42-floor" style="left:' + floorPos.toFixed(2) + '%"></div>' +
-          '<div class="a42-deficit" style="left:' + left.toFixed(2) + "%;width:" + width.toFixed(2) +
-            "%;background:" + (under > 0 ? "#f0b95e" : "#8fd4aa") + '"></div>' +
-          '<div class="a42-pin" style="left:' + pos.toFixed(2) + '%">' +
-            '<i style="background:' + dot + '"></i>' +
-            '<b style="color:' + dot + '">' + att + "%</b></div>" +
-        "</div>" +
-        '<div><span class="a42-tier ' + cls + '">' + esc(level.replace("_", " ")) + "</span>" +
-          '<div class="a42-stake" style="color:' + (level === "NONE" ? "#12a150" : "#e8930c") + '">' +
-            (amt != null ? inr(amt) + (level === "NONE" ? " secured" : " at stake") : "—") + "</div></div>" +
+      var tier = loss ? "Likely loss" : "At risk";
+      var tierBg = loss ? "#fdf0ef" : "#fdf6ea", tierInk = loss ? "#c0392f" : "#b0700a";
+      return '<div class="a42-riskrow" style="animation-delay:' + (Math.min(i, 12) * 0.05).toFixed(2) + 's">' +
+        '<div class="who"><div class="nm">' + esc(r.student.full_name) + "</div>" +
+          '<div class="rl">' + esc(r.student.roll_no) + " · CGPA " + esc(r.student.cgpa) + "</div></div>" +
+        '<div class="sch">' + esc(shortScheme(r.scheme_name)) + "</div>" +
+        attCell(r) +
+        '<div class="stk">' + (amt != null ? inr(amt) : "—") + "</div>" +
+        '<div class="tr"><span class="tier" style="background:' + tierBg + ";color:" + tierInk + '">' +
+          esc(tier) + "</span></div>" +
       "</div>";
     }
-
-    function renderFine() {
-      var host = $("#a42-rnlist");
-      if (!host) return;
-      if (!RN.open) { host.innerHTML = ""; return; }
-      RN.page = clampPage(RN.page, FINE.length, PAGE);
-      host.innerHTML =
-        '<div class="a42-listmeta">' + rangeText(FINE.length, RN.page, PAGE, "awards on track") + "</div>" +
-        pageOf(FINE, RN.page, PAGE).map(function (r, i) { return axisRow(r, i); }).join("") +
-        pager("rn", FINE.length, RN.page, PAGE);
-    }
-    PAGERS.rn = function (p) { RN.page = p; renderFine(); };
 
     window.loaders.renewal = async function () {
       var el = $("#panel-renewal");
@@ -1948,73 +1961,78 @@
         var role = activeRole();
         if (role.student) list = list.filter(function (r) { return r.student.roll_no === role.student; });
 
-        var floors = list.map(function (r) { return floorOf(r.criteria_result); });
-        FLOOR = floors.length ? Math.max.apply(null, floors) : 75;
-        var floorPos = ((FLOOR - LO) / (HI - LO)) * 100;
-
         var urgent = list.filter(function (r) { return r.risk_level && r.risk_level !== "NONE"; });
-        FINE = list.filter(function (r) { return !r.risk_level || r.risk_level === "NONE"; });
+        var safe = list.filter(function (r) { return !r.risk_level || r.risk_level === "NONE"; });
+        urgent.sort(function (a, b) {
+          return (floorOf(b.criteria_result) - (Number(b.student.attendance_pct) || 0)) -
+                 (floorOf(a.criteria_result) - (Number(a.student.attendance_pct) || 0));
+        });
         var stake = urgent.reduce(function (t, r) { return t + (Number(r.sanctioned_amount) || 0); }, 0);
-        var secured = FINE.reduce(function (t, r) { return t + (Number(r.sanctioned_amount) || 0); }, 0);
-        if (role.student) RN.open = true;
-
+        var secured = safe.reduce(function (t, r) { return t + (Number(r.sanctioned_amount) || 0); }, 0);
         setMeta("renewal", urgent.length + " at risk");
 
-        var NOTE_CAP = 8;
-        var notes = urgent.slice(0, NOTE_CAP).map(function (r) {
-          var att = Number(r.student.attendance_pct) || 0, fl = floorOf(r.criteria_result);
-          return '<div class="a42-note bad"><i>!</i><span>' + esc(r.student.full_name) + " (" +
-            esc(r.student.roll_no) + ") sits " + Math.round((fl - att) * 10) / 10 + " points under the floor on " +
-            esc(r.scheme_name) + ". A SCHOLARSHIP_RISK flag is open with the Scholarship Officer — " +
-            "recoverable if attendance climbs before the renewal window closes.</span></div>";
-        }).join("") +
-          (urgent.length > NOTE_CAP ? '<div class="a42-note bad"><i>+</i><span>…and ' +
-            (urgent.length - NOTE_CAP) + " more, each with its own open flag in Agent Activity.</span></div>" : "") +
-          (FINE.length ? '<div class="a42-note ok"><i>✓</i><span>' + nf(FINE.length) + " award" +
-            (FINE.length === 1 ? " clears" : "s clear") + " every renewal rule" +
-            (secured ? " (" + lakh(secured) + " secured)" : "") +
-            ". Nothing is escalated — the agent stays quiet when there is nothing to say.</span></div>" : "");
-
-        el.innerHTML =
+        // --- action list (opens the tab) ---
+        var rows = urgent.map(function (r, i) { return riskRow(r, i); }).join("") ||
+          '<div class="a42-note ok"><i>✓</i><span>No live award is below its renewal floor right now.</span></div>';
+        var actionCard =
           '<div class="a42-ledger">' +
-            '<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:20px;flex-wrap:wrap">' +
-              '<div class="a42-panelhead" style="min-width:0;max-width:60ch">' +
-                '<div class="a42-eyebrow" style="color:#93a0b8">' + nf(list.length) + " live awards · renewal rule check</div>" +
-                "<h2>" + (role.student ? "Will your scholarship renew?" : "One line decides who keeps their scholarship.") + "</h2>" +
-                "<p>Every scheme here renews only above <b>" + FLOOR + "% attendance</b>. Each award is " +
-                  "plotted against that line. Left of it, the money is lost unless somebody acts — " +
-                  "which is why the agent raises the flag now, not in March.</p>" +
-              "</div>" +
-              '<div class="a42-headright"><div class="big">' + urgent.length + "</div>" +
-                '<div class="cap">of ' + nf(list.length) + " at risk</div>" +
-                (stake ? '<div class="stake">' + inr(stake) + " at stake</div>" : "") +
-              "</div>" +
+            '<div class="a42-riskhd"><div>' +
+              '<h2 class="a42-h3" style="margin-bottom:4px">' + nf(urgent.length) + " award" +
+                (urgent.length === 1 ? "" : "s") + " about to be lost</h2>" +
+              '<div class="sub">Attendance below the 75% the scheme needs. Furthest below first.</div></div>' +
+              '<div class="rt"><div class="v">' + inr(stake) + "</div><div class=\"k\">at stake</div></div>" +
             "</div>" +
-            '<div style="margin-top:clamp(26px,3.4vw,40px)">' +
-              '<div class="a42-axishead"><div></div>' +
-                '<div class="a42-axisscale"><span class="lo">' + LO + '%</span>' +
-                  '<span class="fl" style="left:' + floorPos.toFixed(2) + '%">' + FLOOR + '% FLOOR</span>' +
-                  '<span class="hi">' + HI + "%</span></div><div></div></div>" +
-              (urgent.map(function (r, i) { return axisRow(r, i); }).join("") ||
-                (list.length ? "" : '<div class="a42-note ok"><i>✓</i><span>No live scholarships to renew.</span></div>')) +
-              (FINE.length && !role.student
-                ? '<div class="a42-fineband" data-a42-list><span><b>' + nf(FINE.length) + "</b> more award" +
-                    (FINE.length === 1 ? " is" : "s are") + " above the line.</span>" +
-                    '<button class="a42-btn ghost small" id="a42-rntoggle">' + (RN.open ? "Hide them" : "Show them") + "</button></div>"
-                : "") +
-              '<div id="a42-rnlist"></div>' +
-            "</div>" +
-            '<div class="a42-notes"><div class="a42-eyebrow" style="color:#93a0b8;margin-bottom:14px">' +
-              "What the agent did about it</div>" + notes + "</div>" +
+            '<div class="a42-riskhead"><div>Student</div><div>Scheme</div><div>Attendance vs 75%</div>' +
+              '<div class="r">At stake</div><div class="r">Risk</div></div>' +
+            rows +
           "</div>";
+
+        // --- bottom distribution card (all live awards by attendance) ---
+        var LO = 55, STEP = 5, N = 9;   // 55–100 in 5-pt buckets; 75 falls at bucket 4 (44.44%)
+        var buckets = new Array(N).fill(0);
+        list.forEach(function (r) {
+          var a = Number(r.student.attendance_pct) || 0;
+          var idx = Math.floor((a - LO) / STEP);
+          idx = Math.max(0, Math.min(N - 1, idx));
+          buckets[idx]++;
+        });
+        var maxB = Math.max.apply(null, buckets.concat([1]));
+        var bars = buckets.map(function (n, i) {
+          var lo = LO + i * STEP;
+          var color = lo < 65 ? "#d8443c" : (lo < 75 ? "#e8930c" : "#a9c1fb");
+          var h = Math.round((n / maxB) * 92);
+          return '<div class="col"><span class="n" style="color:' + color + '">' + nf(n) + "</span>" +
+            '<div class="bar" style="height:' + h + "px;background:" + color + '"></div></div>';
+        }).join("");
+        var labels = buckets.map(function (n, i) { return '<div class="lbl">' + (LO + i * STEP) + "</div>"; }).join("");
+        var atts = safe.map(function (r) { return Number(r.student.attendance_pct) || 0; }).sort(function (a, b) { return a - b; });
+        var med = atts.length ? (atts.length % 2 ? atts[(atts.length - 1) / 2]
+          : Math.round((atts[atts.length / 2 - 1] + atts[atts.length / 2]) / 2 * 10) / 10) : 0;
+        var distCard = role.student ? "" :
+          '<div class="a42-ledger a42-distcard" style="animation-delay:.1s">' +
+            '<div class="a42-apsumhd"><div class="eb">All ' + nf(list.length) + " live awards by attendance</div>" +
+              '<div class="rt">one bar = 5 points · ' + nf(urgent.length) + " fall below the line</div></div>" +
+            '<div class="a42-hist"><div class="bars">' + bars +
+              '<div class="thresh"></div><div class="threshlbl">75% NEEDED</div></div>' +
+              '<div class="labels">' + labels + "</div></div>" +
+            '<div class="a42-legend distlegend">' +
+              '<span><i style="background:#d8443c"></i>Likely loss</span>' +
+              '<span><i style="background:#e8930c"></i>At risk, still fixable</span>' +
+              '<span><i style="background:#a9c1fb"></i>On track</span></div>' +
+            '<div class="a42-safeband"><span><b>' + nf(safe.length) + "</b> award" + (safe.length === 1 ? " is" : "s are") +
+              " safe — " + lakh(secured) + " secured.</span>" +
+              '<button class="a42-btn ghost small" id="a42-rntoggle">' + (RN.open ? "Hide detail" : "Show detail") + "</button></div>" +
+            (RN.open ? '<div class="a42-safedetail">' + nf(safe.length) + " safe awards · median attendance " + med +
+              "% · lowest " + (atts[0] || 0) + "% · highest " + (atts[atts.length - 1] || 0) + "%.</div>" : "") +
+          "</div>";
+
+        el.innerHTML = actionCard + distCard;
 
         var tg = $("#a42-rntoggle", el);
         if (tg) tg.addEventListener("click", function () {
-          RN.open = !RN.open; RN.page = 1;
-          tg.textContent = RN.open ? "Hide them" : "Show them";
-          renderFine();
+          RN.open = !RN.open;
+          window.loaders.renewal();
         });
-        renderFine();
         syncRail();
       } catch (e) { errorCard(el, e); }
     };

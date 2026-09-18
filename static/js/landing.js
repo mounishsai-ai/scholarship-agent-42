@@ -31,6 +31,27 @@
     setTimeout(markReady, 6000);             // safety net
   })();
 
+  // ---- Hero video loop: at the end, 0.5s of dark, then restart (no fades) ----
+  (function () {
+    var v = document.getElementById("hero-video");
+    var wrap = document.getElementById("hero-video-wrap");
+    if (!v) return;
+    // autoplay may start before this script runs, so also mark it on the first frame update
+    function markPlaying() { if (wrap) wrap.classList.add("is-playing"); }
+    if (!v.paused) markPlaying();
+    v.addEventListener("playing", markPlaying);
+    v.addEventListener("timeupdate", markPlaying);
+    v.addEventListener("ended", function () {
+      v.classList.add("is-dark");
+      setTimeout(function () {
+        v.currentTime = 0;
+        var p = v.play();
+        if (p && p.catch) p.catch(function () {});
+        v.classList.remove("is-dark");
+      }, 500);
+    });
+  })();
+
   // ---- Nav shadow on scroll (cheap, no dependency) ----
   var nav = document.getElementById("nav");
   function onScrollNav() {
@@ -98,7 +119,7 @@
         if (k && d.students && d.students.total) {
           k.textContent = "Live coverage across " + d.students.total.toLocaleString("en-IN") + " CSE students";
         }
-        drawMeter(d.total_eligible, d.total_covered, true);
+        drawMeter(d.total_eligible, d.total_claimed != null ? d.total_claimed : d.total_covered, true);
         renderCoverageRows(d.per_scheme);
       });
     })
@@ -113,7 +134,7 @@
     var rows = per.map(function (s) {
       return '<div class="cov-row"><span>' + escapeHtml(s.scheme_name) + '</span>' +
              '<span>' + s.eligible + '</span>' +
-             '<span class="c-ok">' + s.covered + '</span>' +
+             '<span class="c-ok">' + (s.eligible_claimed != null ? s.eligible_claimed : s.covered) + '</span>' +
              '<span class="c-gap">' + s.gap + '</span></div>';
     }).join("");
     host.innerHTML = head + rows;

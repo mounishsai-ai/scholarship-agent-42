@@ -760,6 +760,7 @@ def coverage_report() -> dict:
         per_scheme = []
         total_eligible = 0
         total_covered = 0
+        total_claimed = 0   # eligible pairs that are sanctioned/disbursed
         # per student: which schemes they qualify for, and how far each got
         ladder = {s["student_id"]: {} for s in students}
         for scheme in schemes:
@@ -780,11 +781,14 @@ def coverage_report() -> dict:
                 ladder[f["student_id"]][sid] = state
             total_eligible += eligible
             total_covered += covered
+            total_claimed += states["CLAIMED"]
             per_scheme.append({
                 "scheme_code": scheme["code"], "scheme_name": scheme["name"],
                 "benefit_amount": scheme["benefit_amount"],
                 "eligible": eligible, "applied": applied, "covered": covered,
-                "gap": eligible - covered,
+                # an award to a student who no longer passes the rules can't close
+                # someone else's gap, so the gap is eligible pairs not yet claimed (never < 0)
+                "gap": eligible - states["CLAIMED"],
                 # the eligible pairs only, split by where each one stands (sums to eligible)
                 "eligible_claimed": states["CLAIMED"], "eligible_applied": states["APPLIED"],
                 "eligible_rejected": states["REJECTED"], "eligible_unapplied": states["ELIGIBLE"],
@@ -837,13 +841,18 @@ def coverage_report() -> dict:
                    JOIN finance.scholarship_scheme sc USING (scholarship_scheme_id)
                    WHERE a.status = 'REJECTED' GROUP BY sc.code ORDER BY n DESC""")
             rej_by_scheme = cur.fetchall()
+            cur.execute("SELECT label FROM core.academic_year WHERE academic_year_id = %s",
+                        (ACADEMIC_YEAR_ID,))
+            year = cur.fetchone()
         return {
+            "academic_year": year["label"] if year else None,
             "disbursement": dsb,
             "rejections_by_scheme": rej_by_scheme,
             "per_scheme": per_scheme,
             "total_eligible": total_eligible,
             "total_covered": total_covered,
-            "coverage_gap": total_eligible - total_covered,
+            "total_claimed": total_claimed,
+            "coverage_gap": total_eligible - total_claimed,
             "rejections": rejections,
             "students": {"total": len(students), **buckets},
             # roll -> bucket, in roll order: drives the one-square-per-student grid

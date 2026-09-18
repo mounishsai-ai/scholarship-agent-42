@@ -94,7 +94,7 @@ a { color: inherit; text-decoration: none; }
 .nav {
   position: sticky; top: 0; z-index: 50;
   display: flex; align-items: center; gap: 20px;
-  min-height: 79px; padding-inline: clamp(16px, 5vw, 40px);
+  min-height: 71px; padding-inline: clamp(16px, 5vw, 40px);
   background: rgba(255,255,255,.82);
   backdrop-filter: saturate(140%) blur(12px);
   border-bottom: 1px solid transparent;
@@ -102,10 +102,10 @@ a { color: inherit; text-decoration: none; }
 }
 .nav.scrolled { border-bottom-color: var(--line); box-shadow: 0 6px 24px rgba(18,34,78,.06); }
 .nav-brand { display: flex; align-items: center; gap: 10px; }
-.nav-logo { height: 52px; width: auto; }
+.nav-logo { height: 47px; width: auto; }
 .nav-mark { display: inline-flex; }
-.nav-name { font-family: var(--font-display); font-weight: 800; font-size: 17px; color: var(--indigo); line-height: 1; display: flex; flex-direction: column; gap: 2px; }
-.nav-name-sub { font-family: var(--font-body); font-size: 10.5px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
+.nav-name { font-family: var(--font-display); font-weight: 800; font-size: 15.3px; color: var(--indigo); line-height: 1; display: flex; flex-direction: column; gap: 2px; }
+.nav-name-sub { font-family: var(--font-body); font-size: 9.5px; font-weight: 600; letter-spacing: .02em; color: var(--muted); }
 .nav-links { display: flex; gap: 26px; margin-left: 8px; }
 .nav-links a { font-size: 14px; font-weight: 500; color: var(--muted); position: relative; padding: 4px 0; }
 .nav-links a::after { content: ""; position: absolute; left: 0; bottom: -2px; width: 0; height: 2px; background: var(--blue); border-radius: 2px; transition: width .22s ease; }
@@ -121,10 +121,15 @@ a { color: inherit; text-decoration: none; }
   background: #12244f;
 }
 /* Campus drone video behind the hero (swapped in from the dashboard). */
+.hero-video-wrap { position: absolute; inset: 0; z-index: 0; }
+/* Once the video plays, the gap between loops is pure dark (not the fallback photo). */
+.hero-video-wrap.is-playing { background: #000; }
 .hero-video {
-  position: absolute; inset: 0; z-index: 0;
+  position: absolute; inset: 0;
   width: 100%; height: 100%; object-fit: cover;
 }
+/* Loop: hard cut to 0.5s of dark between cycles (no fades). */
+.hero-video.is-dark { opacity: 0; }
 /* Vignan campus still behind the hero as a fallback if the video can't play. */
 .hero::before {
   content: ""; position: absolute; inset: 0; z-index: 0;
@@ -369,8 +374,6 @@ a { color: inherit; text-decoration: none; }
 .footer-gh { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; color: #9fb0d4; font-family: var(--font-mono); word-break: break-all; }
 .footer-gh:hover { color: #fff; }
 .footer-bottom { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-top: 40px; padding-top: 22px; border-top: 1px solid rgba(255,255,255,.1); font-size: 12.5px; color: #8296c0; }
-.footer-credit { margin-top: 14px; font-size: 11.5px; letter-spacing: .01em; color: #6b7da3; }
-.footer-credit strong { color: #9fb2d8; font-weight: 600; }
 
 /* ============================ RESPONSIVE ============================ */
 /* ---- overflow safety: let hero children shrink & wrap, never widen the page ---- */
@@ -524,3 +527,57 @@ a { color: inherit; text-decoration: none; }
   line-height: 1.5; color: #991b1b; background: #fdf1f0; border: 1px solid #f3cfcb; }
 .modal-fineprint b { color: var(--indigo); }
 :root[data-theme="dark"] .signin-error { color: #fecaca; background: #2a1a19; border-color: #4a2b28; }
+
+/* ---------- Hero copy legibility over the video ----------
+   A soft dark shade behind the text column, a dark halo around each line, and brighter,
+   slightly heavier small text. */
+.hero-copy { position: relative; }
+.hero-copy::before {
+  content: ""; position: absolute; z-index: -1; pointer-events: none;
+  inset: -60px -90px -60px -140px;
+  background: radial-gradient(closest-side, rgba(6,12,32,.55), rgba(6,12,32,.28) 60%, transparent);
+  filter: blur(8px);
+}
+.hero-title { text-shadow: 0 2px 18px rgba(4,10,28,.55), 0 1px 3px rgba(4,10,28,.45); }
+/* gradient text is transparent, so its halo comes from a drop-shadow instead */
+.hero-title .grad { text-shadow: none; filter: drop-shadow(0 2px 10px rgba(4,10,28,.55)); }
+.hero .eyebrow {
+  color: #e6eeff; font-weight: 700;
+  text-shadow: 0 1px 8px rgba(4,10,28,.85), 0 0 2px rgba(4,10,28,.7);
+}
+.hero-sub {
+  color: #f1f5fd; font-weight: 500;
+  text-shadow: 0 1px 10px rgba(4,10,28,.8), 0 0 2px rgba(4,10,28,.6);
+}
+.hero-note {
+  color: #dde6f7; font-weight: 600;
+  text-shadow: 0 1px 8px rgba(4,10,28,.9), 0 0 2px rgba(4,10,28,.75);
+}
+/* the hero always fills the screen below the 79px nav — no light strip under the video */
+.hero {
+  min-height: calc(100vh - 79px); min-height: calc(100svh - 79px);
+  display: flex; align-items: center;
+}
+@media (min-width: 961px) { .hero-visual { left: clamp(24px, 4vw, 90px); } }
+
+/* ============================ hero register-number sign-in ============================ */
+.hero-signin { flex: 1 1 100%; max-width: 470px; margin: 0; }
+.hero-signin-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.hero-signin-row input {
+  flex: 1 1 150px; min-width: 0; padding: 12px 15px; border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .3); background: rgba(255, 255, 255, .12);
+  color: #fff; font: 500 14px var(--font-body);
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); transition: all .16s ease;
+}
+.hero-signin-row input::placeholder { color: rgba(226, 236, 255, .62); }
+.hero-signin-row input:focus {
+  outline: none; border-color: var(--gold); background: rgba(255, 255, 255, .18);
+  box-shadow: 0 0 0 3px rgba(232, 147, 12, .18);
+}
+.hero-signin-row .btn { flex: 0 0 auto; white-space: nowrap; }
+.hero-signin-hint { margin-top: 8px; font-family: var(--font-mono); font-size: 11.5px; color: #bcd0f5; letter-spacing: .01em; }
+.hero-altrow { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; flex-basis: 100%; margin-top: 4px; }
+.hero-altrow .signin-more { margin-top: 0; }
+@media (max-width: 560px) {
+  .hero-signin-row .btn { flex: 1 1 100%; justify-content: center; }
+}

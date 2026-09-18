@@ -639,6 +639,61 @@ def _chat_context(question: str = "", viewer: str | None = None) -> dict:
     return ctx
 
 
+def _compact_payload(intent: str, payload: dict) -> dict:
+    """Shrink a full engine result to the aggregates + a bounded sample of rows,
+    so the model receives *complete, valid* JSON instead of a string sliced through
+    the middle of a 330- or 1000-row array. This is the fix for 1000-student scale:
+    the old `json.dumps(payload)[:2500]` truncated large results mid-record, and the
+    model then reported "the list is cut off" or an undercount."""
+    if not isinstance(payload, dict):
+        return payload
+    if intent == "coverage":
+        return {
+            "coverage_gap": payload.get("coverage_gap"),
+            "total_eligible_matches": payload.get("total_eligible"),
+            "total_covered": payload.get("total_covered"),
+            "total_claimed": payload.get("total_claimed"),
+            "academic_year": payload.get("academic_year"),
+            "students": payload.get("students"),
+            "disbursement": payload.get("disbursement"),
+            "per_scheme": [{k: s.get(k) for k in (
+                "scheme_code", "scheme_name", "eligible", "eligible_claimed",
+                "eligible_applied", "eligible_rejected", "eligible_unapplied", "gap")}
+                for s in payload.get("per_scheme", [])],
+            "rejections": payload.get("rejections"),
+        }
+    if intent == "reconciliation":
+        res = payload.get("results", [])
+        flagged = [r for r in res if r.get("recommend_suppress")]
+        return {
+            "awards_checked": len(res),
+            "reminders_to_suppress": payload.get("suppress_count", len(flagged)),
+            "ledger_mismatches": payload.get("ledger_sync_count", 0),
+            "wrongly_chased_amount": sum(int(r.get("outstanding") or 0) for r in flagged),
+            "flagged_students": [{"roll_no": r.get("roll_no"), "name": r.get("full_name"),
+                                  "scheme": r.get("scheme_name"), "outstanding": r.get("outstanding"),
+                                  "scholarship_covers": r.get("covered_amount")} for r in flagged[:25]],
+        }
+    if intent == "renewal":
+        res = payload.get("results", [])
+        risk = [r for r in res if r.get("risk_level") in ("AT_RISK", "LIKELY_LOSS")]
+        return {
+            "live_awards": len(res),
+            "at_risk_count": payload.get("at_risk_count", len(risk)),
+            "at_risk": [{"roll_no": (r.get("student") or {}).get("roll_no"),
+                         "name": (r.get("student") or {}).get("full_name"),
+                         "attendance_pct": (r.get("student") or {}).get("attendance_pct"),
+                         "scheme": r.get("scheme_name"), "risk_level": r.get("risk_level")}
+                        for r in risk[:25]],
+        }
+    if intent == "schemes":
+        return {"schemes": [{k: s.get(k) for k in (
+            "code", "name", "benefit_amount", "provider_type", "renewal_required",
+            "application_closes")} for s in payload.get("schemes", [])]}
+    # eligibility / student_fact / integrations / help / thanks are already small
+    return payload
+
+
 def _phrase(question: str, intent: str, payload: dict, viewer: str | None = None) -> str:
     """Phrase the answer. With Gemini configured, answer freely over the full
     context (handles lists and edge cases); offline, use the deterministic
@@ -649,13 +704,14 @@ def _phrase(question: str, intent: str, payload: dict, viewer: str | None = None
         return fallback
     try:
         ctx = _chat_context(question, viewer)
+        focused = _compact_payload(intent, payload)
         prompt = (
             "You are the Scholarship Agent for Vignan University, CSE. Answer the user's "
             "question using ONLY the facts in the JSON below. Never invent a number, name, "
             "scheme, or student that is not present; if the answer is not in the data, say so "
             "plainly. Be concise: 1-3 sentences, or short bullet lines for a list.\n\n"
             f"User question: {question}\n\n"
-            f"Focused result ({intent}): {json.dumps(payload, default=str)[:2500]}\n\n"
+            f"Focused result ({intent}): {json.dumps(focused, default=str)[:4000]}\n\n"
             f"Full context: {json.dumps(ctx, default=str)[:9000]}\n"
         )
         resp = client.models.generate_content(model=GEMINI_MODEL, contents=prompt)

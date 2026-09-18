@@ -159,7 +159,7 @@ async function loadHero() {
     const n = (x) => Number(x || 0).toLocaleString("en-IN");
     const cohort = (c.students && c.students.total) ? `${n(c.students.total)} students` : "the cohort";
     sub.innerHTML = `${n(c.total_eligible)} eligible matches across ${role.label === "Head of Department" ? `the department's ${cohort}` : cohort}, `
-      + `${n(c.total_covered)} already covered${rec.suppress_count ? `, and ${rec.suppress_count} fee reminder(s) to suppress` : ""}. `
+      + `${n(c.total_claimed ?? c.total_covered)} already covered${rec.suppress_count ? `, and ${rec.suppress_count} fee reminder(s) to suppress` : ""}. `
       + `Agent&nbsp;42 works the gap down, scheme by scheme.`;
   } catch (e) {
     h.textContent = "Every eligible student, every scheme — accounted for.";
@@ -333,7 +333,7 @@ async function loadKpis() {
     const n = (x) => Number(x || 0).toLocaleString("en-IN");
     $("#kpis").innerHTML = `
       <div class="kpi"><div class="num">${n(c.total_eligible)}</div><div class="lbl">Eligible matches</div></div>
-      <div class="kpi good"><div class="num">${n(c.total_covered)}</div><div class="lbl">Covered</div></div>
+      <div class="kpi good"><div class="num">${n(c.total_claimed ?? c.total_covered)}</div><div class="lbl">Covered</div></div>
       <div class="kpi bad"><div class="num">${n(c.coverage_gap)}</div><div class="lbl">Coverage gap</div></div>
       <div class="kpi bad"><div class="num">${r.at_risk_count}</div><div class="lbl">Renewals at risk</div></div>
       <div class="kpi bad"><div class="num">${rec.suppress_count}</div><div class="lbl">Reminders to suppress</div></div>`;
@@ -346,14 +346,15 @@ loaders.coverage = async () => {
   try {
     const d = await getData("/api/coverage");
     const rows = d.per_scheme.map(s => {
-      const pct = s.eligible ? Math.round(100 * s.covered / s.eligible) : 0;
+      const claimed = s.eligible_claimed ?? s.covered;
+      const pct = s.eligible ? Math.round(100 * claimed / s.eligible) : 0;
       return `<tr>
         <td>${esc(s.scheme_name)}</td>
         <td>${s.eligible}</td><td>${s.applied}</td>
-        <td class="cell-ok">${s.covered}</td>
+        <td class="cell-ok">${claimed}</td>
         <td class="${s.gap > 0 ? "cell-no" : ""}"><b>${s.gap}</b></td>
         <td class="cov-bar-cell">
-          <div class="cov-bar" title="${s.covered} of ${s.eligible} covered">
+          <div class="cov-bar" title="${claimed} of ${s.eligible} covered">
             <span class="cov-bar-fill" style="width:${pct}%"></span>
           </div>
           <span class="cov-bar-pct">${pct}%</span>
@@ -369,7 +370,7 @@ loaders.coverage = async () => {
           eligible and who is actually covered.</div>
         <div class="kpis" style="margin-bottom:14px">
           <div class="kpi"><div class="num">${d.total_eligible}</div><div class="lbl">Eligible matches</div></div>
-          <div class="kpi good"><div class="num">${d.total_covered}</div><div class="lbl">Covered</div></div>
+          <div class="kpi good"><div class="num">${d.total_claimed ?? d.total_covered}</div><div class="lbl">Covered</div></div>
           <div class="kpi bad"><div class="num">${d.coverage_gap}</div><div class="lbl">Gap to close</div></div>
         </div>
         <div class="tbl-wrap"><table>
@@ -1155,6 +1156,16 @@ applyRole();
   setTimeout(cycle, 2800);
   toggle.addEventListener("click", () => { dismissed = true; hide(); if (timer) clearTimeout(timer); });
   bubble.addEventListener("click", () => toggle.click());
+})();
+
+// ------------------------------------------------------------ hero scroll cue → live dashboard
+(function () {
+  const cue = document.getElementById("dash-scrollcue");
+  if (!cue) return;
+  cue.addEventListener("click", () => {
+    const y = (typeof panelStartY === "function") ? panelStartY() : 0;
+    window.scrollTo({ top: y, behavior: "smooth" });
+  });
 })();
 
 // ------------------------------------------------------------------ upgrade layer hooks
