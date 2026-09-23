@@ -255,6 +255,7 @@ Verify after a deploy: live `/api/coverage` must carry `students`, `total_claime
 doesn't, prod is on an old build (that is what caused the "−102 unclaimed" / "₹0 gap" hero on 2026-09-17).
 
 ## Git
-Commit granularly, alternating the two teammates (Mounish Sai `mounishsai.ai@gmail.com`,
-Ch. V. K. Ranjith Kumar `vu.241fa04806@gmail.com`), each ending with the Claude co-author trailer.
+Commit normally: one commit per logical change, no aiming for a commit count. Author every commit as
+Mounish Sai `mounishsai.ai@gmail.com` (the default git identity; no `--author`), ending with the Claude
+co-author trailer.
 Repo: https://github.com/mounishsai-ai/scholarship-agent-42
