@@ -258,11 +258,3 @@ doesn't, prod is on an old build (that is what caused the "−102 unclaimed" / "
 Commit granularly, alternating the two teammates (Mounish Sai `mounishsai.ai@gmail.com`,
 Ch. V. K. Ranjith Kumar `vu.241fa04806@gmail.com`), each ending with the Claude co-author trailer.
 Repo: https://github.com/mounishsai-ai/scholarship-agent-42
-- **The repo owner is new to git branching** — explain branch/commit/rollback steps in plain terms, spell out
-  the exact commands, and never assume familiarity. Default to the safe path (`git checkout main`) and confirm
-  before anything destructive (`reset --hard`, force-push) or anything that touches GitHub (`git push` — local
-  commits stay off GitHub until pushed; nothing has been pushed yet, so `main` sits many commits *ahead* of origin).
-- **Two snapshot branches (2026-09-18):** `main` = current deployed codebase (original coverage meter-card
-  landing); `updated-landing` = same code + the card-redesign hero (centred glass panel, meter-card removed).
-  Only `landing.html` + `landing.css` differ. Full how-to for switching / editing / deploying / previewing both
-  at once (worktree on port 5001) is in **`GIT-SNAPSHOTS.md`** — read it before doing git work here.
