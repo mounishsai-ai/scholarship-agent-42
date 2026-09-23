@@ -2,6 +2,24 @@
 
 **Agentic AI Day 2026 · Vignan University · CSE**
 
+![Python](https://img.shields.io/badge/Python-3-3776AB?logo=python&logoColor=white)
+![Flask](https://img.shields.io/badge/Flask-000000?logo=flask&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![Gemini](https://img.shields.io/badge/Gemini-Vertex%20AI-8E75B2?logo=googlegemini&logoColor=white)
+![Cloud Run](https://img.shields.io/badge/Google%20Cloud%20Run-deployed-4285F4?logo=googlecloud&logoColor=white)
+
+**▶ Live demo:** https://scholarship-agent-42-1031611339150.asia-south1.run.app
+Sign in with a register number (e.g. `23CSE001`; first password = the register number).
+All student data is synthetic.
+
+**Highlights**
+- A deterministic rules engine matches a **1,000-student cohort** against every scholarship scheme
+  and records the *why* behind every decision. The LLM phrases answers but never produces a number.
+- A real agentic loop (**detect → decide → act → measure**) with a full audit trail and
+  **human-approval gates** on anything that touches a student.
+- Integrates with other agents only through a **shared PostgreSQL database** (no service-to-service calls).
+- Role-scoped sign-in: students see only their own rows, enforced server-side.
+
 Agent 42 of the 72-agent academic platform. It makes sure every student gets every
 scholarship they are eligible for, no application lapses on a deadline, no renewal is
 lost to a fixable attendance dip, and no student is chased for fees a scholarship
@@ -13,7 +31,7 @@ change.
 
 ---
 
-## What it does (the five things judges will look for)
+## What it does
 
 | Screen | What it proves |
 |---|---|
@@ -40,7 +58,7 @@ Reasoning engine (the brain)              scholarship_engine.py
         │  reads/writes through one helper
 Postgres connection helper                db.py
         │
-Shared platform database (Supabase)       ../files/*.sql  +  seed.sql
+Shared platform database (Postgres)       schema/  +  seed.sql  +  scripts/
 ```
 
 - **`db.py`** — the single doorway to Postgres.
@@ -49,13 +67,14 @@ Shared platform database (Supabase)       ../files/*.sql  +  seed.sql
 - **`app.py`** — thin Flask routes; each calls one engine function. `/api/chat` is the only
   place Gemini is used, and only to phrase numbers the engine already computed.
 - **`seed.sql`** — the demo world, built around three stories (below).
+- **`scripts/seed_cohort.py`** — seeds the 1,000-student cohort (22CSE–25CSE, deterministic, re-runnable).
 
 ---
 
 ## End-to-End (how it actually works)
 
-> Reference for later / interview prep. This is the honest, mechanism-level version:
-> what is **automated**, what is **human-in-the-loop**, and what is **demo-modeled**.
+> The mechanism-level version: what is **automated**, what is **human-in-the-loop**,
+> and what is **demo-modeled**.
 
 ### The core idea in one paragraph
 72 agents share **one PostgreSQL database**. No agent calls another agent's code or website —
@@ -95,7 +114,7 @@ Each API route calls exactly one engine function; reads go through the **views**
 2. `POST /api/scheme → create_scheme()` inserts one row into `finance.scholarship_scheme` with the
    rules stored as JSONB, and logs an `agent_run`.
 3. **Instantly, no extra work:** on the next read, `evaluate()` walks each rule against every one of
-   the 20 students' facts → the scheme appears in the **Eligibility Matrix**, **Coverage** recomputes
+   the cohort's facts → the scheme appears in the **Eligibility Matrix**, **Coverage** recomputes
    the gap, and each matching student becomes "eligible" (with a **Why?** listing the rules that
    passed). *This is spec workflow-step 2 — "match every student against every scheme" — made live.*
 4. Downstream unlocks for that scheme: notify → prepare pack → track → renewal → reconcile.
@@ -123,7 +142,7 @@ Gemini phrases the **engine's** numbers over the data context. With no key / no 
 back to deterministic templates — so a network failure changes wording, never the answer. Role
 scoping is enforced (a student can only see their own record).
 
-### What's automated vs manual vs demo-modeled (be honest in interviews)
+### What's automated vs manual vs demo-modeled
 | Piece | Reality |
 |---|---|
 | Eligibility matching, coverage, renewal detection, reconciliation math | **Fully automated & deterministic** — computed from the JSONB rules + shared data. |
@@ -150,11 +169,19 @@ scoping is enforced (a student can only see their own record).
    ```sql
    create extension if not exists pgcrypto;
    ```
-3. Load the platform schema: open `../files/schema_full.sql`, paste the whole file into
-   the SQL editor, and run it. (Or run `01_…sql` through `12_…sql` in order.)
+3. Load the platform schema: open `schema/schema_full.sql`, paste the whole file into
+   the SQL editor, and run it.
 4. Load the demo data: paste and run `seed.sql` from this folder. The last query should
-   list twenty students `23CSE001`–`23CSE020` with CGPA and attendance — that means it worked.
-   (Easy to scale further: copy the last student block and bump the numbers.)
+   list the hand-written demo students `23CSE001`–`23CSE020` with CGPA and attendance.
+5. Seed the full 1,000-student cohort, then roll it to the current academic year
+   (after step 2 below, once `DATABASE_URL` is in `.env`):
+   ```bash
+   python scripts/seed_cohort.py
+   # then run scripts/roll_to_2026_27.sql in the SQL editor
+   ```
+
+> Prefer local? `docker run -d --name a42pg -e POSTGRES_PASSWORD=local -e POSTGRES_DB=platform -p 55432:5432 postgres:16`,
+> load the same files in the same order, and point `DATABASE_URL` at `127.0.0.1:55432`.
 
 ### 2. Get the connection string
 Supabase → **Project Settings → Database → Connection string → URI**. It looks like:
@@ -214,7 +241,7 @@ The spec defines Agent 42 as *"Consumes Agents 10, 11. Feeds Agents 40, 41, 43."
 Agents 10 and 11 belong to other teams, so we read their published data and label it as a stub —
 we did not fake building them.
 
-## Two honest notes for the judges
+## Design notes
 
 - **Upstream agents are stubbed.** Agents 10 (academic performance) and 11 (attendance) are
   *declared inputs* owned by other teams. We read their data directly from the shared views and
